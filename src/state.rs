@@ -1,10 +1,7 @@
 //! State transition types
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{
-    program_pack::IsInitialized,
-    pubkey::Pubkey,
-};
+use solana_program::{program_pack::IsInitialized, pubkey::Pubkey};
 
 use crate::PROGRAM_VERSION;
 
@@ -25,6 +22,9 @@ pub struct RewardManager {
 }
 
 impl RewardManager {
+    /// The struct size on bytes
+    pub const LEN: usize = 66;
+
     /// Creates new `RewardManager`
     pub fn new(token_account: Pubkey, manager: Pubkey, min_votes: u8) -> Self {
         Self {

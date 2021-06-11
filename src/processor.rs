@@ -1,13 +1,10 @@
 //! Program state processor
 
-use crate::{PROGRAM_VERSION, error::ProgramTemplateError, instruction::TemplateInstruction, state::RewardManager};
+use crate::{instruction::Instructions, state::RewardManager};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    program_pack::IsInitialized,
-    account_info::AccountInfo, 
-    account_info::next_account_info, 
-    entrypoint::ProgramResult, msg, 
-    program_error::ProgramError, pubkey::Pubkey
+    account_info::next_account_info, account_info::AccountInfo, entrypoint::ProgramResult, msg,
+    program_error::ProgramError, program_pack::IsInitialized, pubkey::Pubkey,
 };
 
 /// Program state handler.
@@ -23,25 +20,28 @@ impl Processor {
         athority_info: &AccountInfo<'a>,
         min_votes: u8,
     ) -> ProgramResult {
+        msg!("1");
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
+        msg!("1");
         if reward_manager.is_initialized() {
             return Err(ProgramError::AccountAlreadyInitialized);
         }
 
-        let (authority, _) = Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
+        let (authority, _) =
+            Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
+        if authority != *athority_info.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
 
         spl_token::instruction::initialize_account(
-            &spl_token::id(), 
-            token_account_info.key, 
-            mint_info.key, 
+            &spl_token::id(),
+            token_account_info.key,
+            mint_info.key,
             &authority,
         )?;
 
-        RewardManager::new(
-            *token_account_info.key,
-            *manager_info.key,
-            min_votes,
-        ).serialize(&mut *reward_manager_info.data.borrow_mut())?;
+        RewardManager::new(*token_account_info.key, *manager_info.key, min_votes)
+            .serialize(&mut *reward_manager_info.data.borrow_mut())?;
 
         Ok(())
     }
@@ -52,10 +52,10 @@ impl Processor {
         accounts: &[AccountInfo],
         input: &[u8],
     ) -> ProgramResult {
-        let instruction = TemplateInstruction::try_from_slice(input)?;
+        let instruction = Instructions::try_from_slice(input)?;
         let account_info_iter = &mut accounts.iter();
         match instruction {
-            TemplateInstruction::InitRewardManager{ min_votes }=> {
+            Instructions::InitRewardManager { min_votes } => {
                 msg!("Instruction: ExampleInstruction");
 
                 let reward_manager = next_account_info(account_info_iter)?;
@@ -65,11 +65,11 @@ impl Processor {
                 let athority = next_account_info(account_info_iter)?;
 
                 Self::process_init_instruction(
-                    program_id, 
-                    reward_manager, 
-                    token_account, 
-                    mint, 
-                    manager, 
+                    program_id,
+                    reward_manager,
+                    token_account,
+                    mint,
+                    manager,
                     athority,
                     min_votes,
                 )

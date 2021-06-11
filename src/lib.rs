@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! A minimal Solana program template
+//! Audius Reward Manager program
 
 pub mod error;
 pub mod instruction;
