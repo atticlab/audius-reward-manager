@@ -20,9 +20,7 @@ impl Processor {
         athority_info: &AccountInfo<'a>,
         min_votes: u8,
     ) -> ProgramResult {
-        msg!("1");
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        msg!("1");
         if reward_manager.is_initialized() {
             return Err(ProgramError::AccountAlreadyInitialized);
         }
@@ -42,7 +40,6 @@ impl Processor {
 
         RewardManager::new(*token_account_info.key, *manager_info.key, min_votes)
             .serialize(&mut *reward_manager_info.data.borrow_mut())?;
-
         Ok(())
     }
 
@@ -56,7 +53,7 @@ impl Processor {
         let account_info_iter = &mut accounts.iter();
         match instruction {
             Instructions::InitRewardManager { min_votes } => {
-                msg!("Instruction: ExampleInstruction");
+                msg!("Instruction: InitRewardManager");
 
                 let reward_manager = next_account_info(account_info_iter)?;
                 let token_account = next_account_info(account_info_iter)?;
