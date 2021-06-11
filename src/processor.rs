@@ -2,8 +2,10 @@
 
 use crate::{instruction::Instructions, state::RewardManager};
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{account_info::AccountInfo, account_info::next_account_info, entrypoint::ProgramResult, msg, program_error::ProgramError, program_pack::{IsInitialized, Pack}, pubkey::Pubkey};
-use spl_token::state::Mint;
+use solana_program::{
+    account_info::next_account_info, account_info::AccountInfo, entrypoint::ProgramResult, msg,
+    program::invoke, program_error::ProgramError, program_pack::IsInitialized, pubkey::Pubkey,
+};
 
 /// Program state handler.
 pub struct Processor {}
@@ -16,6 +18,7 @@ impl Processor {
         mint_info: &AccountInfo<'a>,
         manager_info: &AccountInfo<'a>,
         athority_info: &AccountInfo<'a>,
+        rent: &AccountInfo<'a>,
         min_votes: u8,
     ) -> ProgramResult {
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
@@ -29,16 +32,19 @@ impl Processor {
             return Err(ProgramError::InvalidAccountData);
         }
 
-        let mint = Mint::unpack_from_slice(&mint_info.data.borrow())?;
-        if !mint.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
-
-        spl_token::instruction::initialize_account(
-            &spl_token::id(),
-            token_account_info.key,
-            mint_info.key,
-            &authority,
+        invoke(
+            &spl_token::instruction::initialize_account(
+                &spl_token::id(),
+                token_account_info.key,
+                mint_info.key,
+                &authority,
+            )?,
+            &[
+                token_account_info.clone(),
+                mint_info.clone(),
+                athority_info.clone(),
+                rent.clone(),
+            ],
         )?;
 
         RewardManager::new(*token_account_info.key, *manager_info.key, min_votes)
@@ -63,6 +69,8 @@ impl Processor {
                 let mint = next_account_info(account_info_iter)?;
                 let manager = next_account_info(account_info_iter)?;
                 let athority = next_account_info(account_info_iter)?;
+                let _spl_token = next_account_info(account_info_iter)?;
+                let rent = next_account_info(account_info_iter)?;
 
                 Self::process_init_instruction(
                     program_id,
@@ -71,6 +79,7 @@ impl Processor {
                     mint,
                     manager,
                     athority,
+                    rent,
                     min_votes,
                 )
             }

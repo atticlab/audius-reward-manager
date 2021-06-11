@@ -4,6 +4,7 @@ mod utils;
 use audius_reward_manager::instruction;
 use borsh::BorshSerialize;
 use solana_program::program_option::COption;
+use solana_program::program_pack::IsInitialized;
 use solana_sdk::signature::Keypair;
 use utils::program_test;
 
@@ -83,6 +84,7 @@ async fn success() {
     );
 
     context.banks_client.process_transaction(tx).await.unwrap();
+
     assert_eq!(
         audius_reward_manager::state::RewardManager::new(
             token_account.pubkey(),
@@ -95,6 +97,14 @@ async fn success() {
             .await
             .unwrap()
     );
+
+    let token_data: spl_token::state::Account = context
+        .banks_client
+        .get_packed_account_data(token_account.pubkey())
+        .await
+        .unwrap();
+
+    assert!(token_data.is_initialized());
 }
 
 #[tokio::test]
