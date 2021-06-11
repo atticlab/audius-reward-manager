@@ -25,19 +25,19 @@ async fn success() {
 
     let manager = Pubkey::new_unique();
     let reward_manager = Keypair::new();
-    let token_account =  Keypair::new();
+    let token_account = Keypair::new();
     let mint = Pubkey::new_unique();
     let min_votes = 3;
 
-    let mut data = Vec::<u8>::with_capacity(spl_token::state::Mint::LEN);
-    // let mint_data = spl_token::state::Mint {
-    //     mint_authority: COption::None,
-    //     supply: 0,
-    //     decimals: 4,
-    //     is_initialized: true,
-    //     freeze_authority: COption::None,
-    // };
-    // mint_data.pack_into_slice(data.as_mut_slice());
+    let mut data = vec![0u8; spl_token::state::Mint::LEN];
+    let mint_data = spl_token::state::Mint {
+        mint_authority: COption::None,
+        supply: 100,
+        decimals: 4,
+        is_initialized: true,
+        freeze_authority: COption::None,
+    };
+    mint_data.pack_into_slice(data.as_mut_slice());
     program_test.add_account(
         mint,
         Account {
@@ -74,7 +74,8 @@ async fn success() {
                 &mint,
                 &manager,
                 min_votes,
-            ).unwrap(),
+            )
+            .unwrap(),
         ],
         Some(&context.payer.pubkey()),
         &[&context.payer, &reward_manager, &token_account],
@@ -82,6 +83,18 @@ async fn success() {
     );
 
     context.banks_client.process_transaction(tx).await.unwrap();
+    assert_eq!(
+        audius_reward_manager::state::RewardManager::new(
+            token_account.pubkey(),
+            manager,
+            min_votes
+        ),
+        context
+            .banks_client
+            .get_account_data_with_borsh(reward_manager.pubkey())
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -101,7 +114,7 @@ async fn fail_already_initialized() {
         reward_manager,
         Account {
             lamports: 9000,
-            data: data.clone(),
+            data: data,
             owner: audius_reward_manager::id(),
             executable: false,
             rent_epoch: 0,
@@ -123,7 +136,7 @@ async fn fail_already_initialized() {
         &[&context.payer],
         context.last_blockhash,
     );
-    
+
     assert_eq!(
         context
             .banks_client
@@ -132,5 +145,5 @@ async fn fail_already_initialized() {
             .unwrap_err()
             .unwrap(),
         TransactionError::InstructionError(0, InstructionError::AccountAlreadyInitialized)
-    )
+    );
 }
