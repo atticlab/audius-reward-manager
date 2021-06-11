@@ -2,10 +2,8 @@
 
 use crate::{instruction::Instructions, state::RewardManager};
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{
-    account_info::next_account_info, account_info::AccountInfo, entrypoint::ProgramResult, msg,
-    program_error::ProgramError, program_pack::IsInitialized, pubkey::Pubkey,
-};
+use solana_program::{account_info::AccountInfo, account_info::next_account_info, entrypoint::ProgramResult, msg, program_error::ProgramError, program_pack::{IsInitialized, Pack}, pubkey::Pubkey};
+use spl_token::state::Mint;
 
 /// Program state handler.
 pub struct Processor {}
@@ -29,6 +27,11 @@ impl Processor {
             Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
         if authority != *athority_info.key {
             return Err(ProgramError::InvalidAccountData);
+        }
+
+        let mint = Mint::unpack_from_slice(&mint_info.data.borrow())?;
+        if !mint.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
         }
 
         spl_token::instruction::initialize_account(
