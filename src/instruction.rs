@@ -42,11 +42,11 @@ pub fn init(
     let accounts = vec![
         AccountMeta::new(*reward_manager, false),
         AccountMeta::new(*token_account, false),
-        AccountMeta::new(*mint, false),
-        AccountMeta::new(*manager, false),
-        AccountMeta::new(authority, false),
-        AccountMeta::new(spl_token::id(), false),
-        AccountMeta::new(sysvar::rent::id(), false),
+        AccountMeta::new_readonly(*mint, false),
+        AccountMeta::new_readonly(*manager, false),
+        AccountMeta::new_readonly(authority, false),
+        AccountMeta::new_readonly(spl_token::id(), false),
+        AccountMeta::new_readonly(sysvar::rent::id(), false),
     ];
     Ok(Instruction {
         program_id: *program_id,
