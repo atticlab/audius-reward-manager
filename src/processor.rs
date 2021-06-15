@@ -1,17 +1,19 @@
 //! Program state processor
 
-use crate::{instruction::Instructions, state::RewardManager};
-use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{
-    account_info::next_account_info, account_info::AccountInfo, entrypoint::ProgramResult, msg,
-    program::invoke, program_error::ProgramError, program_pack::IsInitialized, pubkey::Pubkey,
+use std::borrow::BorrowMut;
+
+use crate::{
+    instruction::Instructions,
+    state::{RewardManager, SenderAccount},
 };
+use borsh::{BorshDeserialize, BorshSerialize};
+use solana_program::{account_info::AccountInfo, account_info::next_account_info, entrypoint::ProgramResult, msg, program::{invoke, invoke_signed}, program_error::ProgramError, program_pack::IsInitialized, pubkey::Pubkey, rent::Rent, system_instruction, sysvar::Sysvar};
 
 /// Program state handler.
 pub struct Processor {}
 impl Processor {
     /// Process example instruction
-    pub fn process_init_instruction<'a>(
+    fn process_init_instruction<'a>(
         program_id: &Pubkey,
         reward_manager_info: &AccountInfo<'a>,
         token_account_info: &AccountInfo<'a>,
@@ -52,6 +54,83 @@ impl Processor {
         Ok(())
     }
 
+    fn process_create_sender<'a>(
+        program_id: &Pubkey,
+        eth_address: [u8; 20],
+        reward_manager_info: &AccountInfo<'a>,
+        manager_account_info: &AccountInfo<'a>,
+        authority_info: &AccountInfo<'a>,
+        funder_account_info: &AccountInfo<'a>,
+        sender_info: &AccountInfo<'a>,
+        sys_prog_info: &AccountInfo<'a>,
+        rent_info: &AccountInfo<'a>,
+    ) -> ProgramResult {
+        let reward_manager = RewardManager::try_from_slice(&manager_account_info.data.borrow())?;
+        if !reward_manager.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+
+        if reward_manager.manager != *manager_account_info.key {
+            todo!()
+        }
+
+        let addidable_sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
+        if addidable_sender.is_initialized() {
+            return Err(ProgramError::AccountAlreadyInitialized);
+        }
+
+        let (sender_address, _) = Pubkey::find_program_address(
+            &[&authority_info.key.to_bytes(), b"S_", eth_address.as_ref()],
+            program_id,
+        );
+        if *sender_info.key != sender_address {
+            todo!()
+        }
+
+        let rent = Rent::from_account_info(rent_info)?;
+        invoke_signed(
+            &system_instruction::create_account(
+                funder_account_info.key,
+                sender_info.key,
+                rent.minimum_balance(SenderAccount::LEN),
+                SenderAccount::LEN as _,
+                &crate::id(),
+            ),
+            &[],
+            &[&[]],
+        )?;
+
+        SenderAccount::new(*manager_account_info.key, eth_address)
+            .serialize(&mut *sender_info.data.borrow_mut())?;
+
+        Ok(())
+    }
+
+    fn process_delete_sender<'a>(
+        program_id: &Pubkey,
+        authority_info: &AccountInfo<'a>,
+        reward_manager_info: &AccountInfo<'a>,
+        refunder_account_info: &AccountInfo<'a>,
+        sender_info: &AccountInfo<'a>,
+    ) -> ProgramResult {
+        let sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
+        let (authority, _) = Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
+        let (sender_address, seed) = Pubkey::find_program_address(
+            &[&authority.to_bytes(), b"S_", sender.eth_address.as_ref()],
+            program_id,
+        );
+
+        invoke_signed(
+            &system_instruction::transfer(
+                sender_info.key, 
+                &refunder_account_info.key, 
+                sender_info.lamports()), 
+            &[sender_info.clone(), refunder_account_info.clone()], 
+            &[&[&[seed]]],
+        )?;
+        Ok(())
+    }
+
     /// Processes an instruction
     pub fn process_instruction(
         program_id: &Pubkey,
@@ -81,6 +160,45 @@ impl Processor {
                     athority,
                     rent,
                     min_votes,
+                )
+            }
+            Instructions::CreateSender { eth_address } => {
+                msg!("Instruction: CreateSender");
+
+                let reward_manager = next_account_info(account_info_iter)?;
+                let manager_account = next_account_info(account_info_iter)?;
+                let authority = next_account_info(account_info_iter)?;
+                let funder_account = next_account_info(account_info_iter)?;
+                let sender = next_account_info(account_info_iter)?;
+                let sys_prog = next_account_info(account_info_iter)?;
+                let rent = next_account_info(account_info_iter)?;
+
+                Self::process_create_sender(
+                    program_id,
+                    eth_address,
+                    reward_manager,
+                    manager_account,
+                    authority,
+                    funder_account,
+                    sender,
+                    sys_prog,
+                    rent,
+                )
+            }
+            Instructions::DeleteSender => {
+                msg!("Instruction: DeleteSender");
+
+                let reward_manager = next_account_info(account_info_iter)?;
+                let manager_account = next_account_info(account_info_iter)?;
+                let authority = next_account_info(account_info_iter)?;
+                let sender= next_account_info(account_info_iter)?;
+                let refunder = next_account_info(account_info_iter)?;
+                Self::process_delete_sender(
+                    program_id,
+                    authority,
+                    reward_manager,
+                    refunder,
+                    sender,
                 )
             }
         }

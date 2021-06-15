@@ -12,13 +12,13 @@ pub const UNINITIALIZED_VERSION: u8 = 0;
 /// The the root entity within the program
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub struct RewardManager {
-    version: u8,
+    pub version: u8,
     /// Token account for rewards to be sent via this program
-    token_account: Pubkey,
+    pub token_account: Pubkey,
     /// Account authorized managing this Reward Manager (adding/removing signers, updating params etc.)
-    manager: Pubkey,
+    pub manager: Pubkey,
     /// Number of signer votes required for sending rewards
-    min_votes: u8,
+    pub min_votes: u8,
 }
 
 impl RewardManager {
@@ -37,6 +37,33 @@ impl RewardManager {
 }
 
 impl IsInitialized for RewardManager {
+    fn is_initialized(&self) -> bool {
+        self.version != UNINITIALIZED_VERSION
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+pub struct SenderAccount {
+    pub version: u8,
+    pub reward_manager: Pubkey,
+    pub eth_address: [u8; 20],
+}
+
+impl SenderAccount {
+    /// The struct size on bytes
+    pub const LEN: usize = 53;
+
+    /// Creates new `SenderAccount`
+    pub fn new(reward_manager: Pubkey, eth_address: [u8; 20]) -> Self {
+        Self {
+            version: PROGRAM_VERSION,
+            reward_manager,
+            eth_address,
+        }
+    }
+}
+
+impl IsInitialized for SenderAccount {
     fn is_initialized(&self) -> bool {
         self.version != UNINITIALIZED_VERSION
     }
