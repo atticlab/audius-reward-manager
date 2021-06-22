@@ -90,7 +90,7 @@ pub fn create_sender(
     let create_data = Instructions::CreateSender { eth_address };
     let data = create_data.try_to_vec()?;
 
-    let (authority, base_seed) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
+    let (authority, _) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
     let mut seed = Vec::new();
     seed.extend_from_slice(b"S_");
     seed.extend_from_slice(&eth_address.as_ref());
@@ -122,7 +122,7 @@ pub fn delete_sender(
     sender: &Pubkey,
     refunder_account: &Pubkey,
 ) -> Result<Instruction, ProgramError> {
-    let (authority, base_seed) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
+    let (authority, _) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),

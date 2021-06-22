@@ -47,7 +47,7 @@ async fn success() {
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    let (authority, base_seed) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], &audius_reward_manager::id());
+    let (authority, _) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], &audius_reward_manager::id());
     let mut seed = Vec::new();
     seed.extend_from_slice(b"S_");
     seed.extend_from_slice(&eth_address.as_ref());

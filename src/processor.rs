@@ -129,13 +129,9 @@ impl Processor {
         refunder_account_info: &AccountInfo<'a>,
         sender_info: &AccountInfo<'a>,
     ) -> ProgramResult {
-        let sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
-        let (authority, _) =
-            Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
-        let (_, seed) = Pubkey::find_program_address(
-            &[&authority.to_bytes(), b"S_", sender.eth_address.as_ref()],
-            program_id,
-        );
+        let (_, base_seed) = Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
+
+        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[base_seed]];
 
         invoke_signed(
             &system_instruction::transfer(
@@ -144,8 +140,9 @@ impl Processor {
                 sender_info.lamports(),
             ),
             &[sender_info.clone(), refunder_account_info.clone()],
-            &[&[&[seed]]],
+            &[signature],
         )?;
+        
         Ok(())
     }
 
@@ -211,7 +208,14 @@ impl Processor {
                 let authority = next_account_info(account_info_iter)?;
                 let sender = next_account_info(account_info_iter)?;
                 let refunder = next_account_info(account_info_iter)?;
-                Self::process_delete_sender(program_id, authority, reward_manager, refunder, sender)
+
+                Self::process_delete_sender(
+                    program_id, 
+                    authority, 
+                    reward_manager, 
+                    refunder, 
+                    sender,
+                )
             }
         }
     }
