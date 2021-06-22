@@ -34,14 +34,17 @@ pub enum Instructions {
     ///   4. `[]`  Addidable sender
     ///   5. `[]`  System program id
     ///   6. `[]`  Rent sysvar
-    CreateSender { eth_address: [u8; 20] },
+    CreateSender {
+        /// Ethereum address
+        eth_address: [u8; 20],
+    },
 
     ///   Admin method removing sender
     ///  
     ///   0. `[]` `Reward Manager`
     ///   1. `[s]` Manager account
     ///   2. `[]`  `Reward Manager` authority
-    ///   3. `[]`  Removed sender
+    ///   3. `[w]`  Removed sender
     ///   4. `[]`  Refunder account
     DeleteSender,
 }
@@ -104,9 +107,19 @@ pub fn create_sender(
 /// Create `DeleteSender` instruction
 pub fn delete_sender(
     program_id: &Pubkey,
+    reward_manager: &Pubkey,
+    manager_account: &Pubkey,
+    sender: &Pubkey,
     refunder_account: &Pubkey,
 ) -> Result<Instruction, ProgramError> {
-    let accounts = vec![];
+    let (authority, _) = Pubkey::find_program_address(&[manager_account.as_ref()], program_id);
+    let accounts = vec![
+        AccountMeta::new_readonly(*reward_manager, false),
+        AccountMeta::new_readonly(*manager_account, true),
+        AccountMeta::new_readonly(authority, false),
+        AccountMeta::new(*sender, false),
+        AccountMeta::new_readonly(*refunder_account, false),
+    ];
 
     Ok(Instruction {
         program_id: *program_id,

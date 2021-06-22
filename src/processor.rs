@@ -1,16 +1,27 @@
 //! Program state processor
 
-use std::borrow::BorrowMut;
-
 use crate::{
     instruction::Instructions,
     state::{RewardManager, SenderAccount},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{account_info::AccountInfo, account_info::next_account_info, entrypoint::ProgramResult, msg, program::{invoke, invoke_signed}, program_error::ProgramError, program_pack::IsInitialized, pubkey::Pubkey, rent::Rent, system_instruction, sysvar::Sysvar};
+use solana_program::{
+    account_info::next_account_info,
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    msg,
+    program::{invoke, invoke_signed},
+    program_error::ProgramError,
+    program_pack::IsInitialized,
+    pubkey::Pubkey,
+    rent::Rent,
+    system_instruction,
+    sysvar::Sysvar,
+};
 
 /// Program state handler.
-pub struct Processor {}
+pub struct Processor;
+
 impl Processor {
     /// Process example instruction
     fn process_init_instruction<'a>(
@@ -71,7 +82,8 @@ impl Processor {
         }
 
         if reward_manager.manager != *manager_account_info.key {
-            todo!()
+            msg!("Incorent account manager account");
+            todo!();
         }
 
         let addidable_sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
@@ -84,6 +96,7 @@ impl Processor {
             program_id,
         );
         if *sender_info.key != sender_address {
+            msg!("");
             todo!()
         }
 
@@ -114,7 +127,8 @@ impl Processor {
         sender_info: &AccountInfo<'a>,
     ) -> ProgramResult {
         let sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
-        let (authority, _) = Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
+        let (authority, _) =
+            Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
         let (sender_address, seed) = Pubkey::find_program_address(
             &[&authority.to_bytes(), b"S_", sender.eth_address.as_ref()],
             program_id,
@@ -122,10 +136,11 @@ impl Processor {
 
         invoke_signed(
             &system_instruction::transfer(
-                sender_info.key, 
-                &refunder_account_info.key, 
-                sender_info.lamports()), 
-            &[sender_info.clone(), refunder_account_info.clone()], 
+                sender_info.key,
+                &refunder_account_info.key,
+                sender_info.lamports(),
+            ),
+            &[sender_info.clone(), refunder_account_info.clone()],
             &[&[&[seed]]],
         )?;
         Ok(())
@@ -191,15 +206,9 @@ impl Processor {
                 let reward_manager = next_account_info(account_info_iter)?;
                 let manager_account = next_account_info(account_info_iter)?;
                 let authority = next_account_info(account_info_iter)?;
-                let sender= next_account_info(account_info_iter)?;
+                let sender = next_account_info(account_info_iter)?;
                 let refunder = next_account_info(account_info_iter)?;
-                Self::process_delete_sender(
-                    program_id,
-                    authority,
-                    reward_manager,
-                    refunder,
-                    sender,
-                )
+                Self::process_delete_sender(program_id, authority, reward_manager, refunder, sender)
             }
         }
     }

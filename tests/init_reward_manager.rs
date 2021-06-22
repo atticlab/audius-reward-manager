@@ -22,7 +22,6 @@ use solana_sdk::{
 #[tokio::test]
 async fn success() {
     let mut program_test = program_test();
-    program_test.set_bpf_compute_max_units(90000);
 
     let manager = Pubkey::new_unique();
     let reward_manager = Keypair::new();

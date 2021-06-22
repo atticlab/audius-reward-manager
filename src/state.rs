@@ -12,6 +12,7 @@ pub const UNINITIALIZED_VERSION: u8 = 0;
 /// The the root entity within the program
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub struct RewardManager {
+    /// Version
     pub version: u8,
     /// Token account for rewards to be sent via this program
     pub token_account: Pubkey,
@@ -42,10 +43,14 @@ impl IsInitialized for RewardManager {
     }
 }
 
+/// Some doc
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub struct SenderAccount {
+    /// Version
     pub version: u8,
+    /// Reward manager
     pub reward_manager: Pubkey,
+    /// Ethereum address
     pub eth_address: [u8; 20],
 }
 
