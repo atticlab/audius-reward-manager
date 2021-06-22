@@ -101,7 +101,7 @@ pub fn create_sender(
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
         AccountMeta::new_readonly(authority, false),
-        AccountMeta::new_readonly(*funder_account, true),
+        AccountMeta::new(*funder_account, true),
         AccountMeta::new(sender_address, false),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
