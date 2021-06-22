@@ -18,6 +18,7 @@ use solana_program::{
     system_instruction,
     sysvar::Sysvar,
 };
+use std::str;
 
 /// Program state handler.
 pub struct Processor;
@@ -82,37 +83,39 @@ impl Processor {
         }
 
         if reward_manager.manager != *manager_account_info.key {
-            msg!("Incorent account manager account");
+            msg!("Incorect account manager");
             todo!();
         }
-        
-        let addidable_sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
-        if addidable_sender.is_initialized() {
-            return Err(ProgramError::AccountAlreadyInitialized);
-        }
 
-        let (sender_address, _) = Pubkey::find_program_address(
-            &[&authority_info.key.to_bytes(), b"S_", eth_address.as_ref()],
-            program_id,
-        );
+        let (authority, base_seed) = Pubkey::find_program_address(&[&reward_manager_info.key.to_bytes()[..32]], program_id);
+
+        let mut seed = Vec::new();
+        seed.extend_from_slice(b"S_");
+        seed.extend_from_slice(&eth_address.as_ref());
+        let s_seed = str::from_utf8(seed.as_ref()).unwrap();
+        let sender_address = Pubkey::create_with_seed(&authority, s_seed, &crate::id())?;
         if *sender_info.key != sender_address {
-            msg!("");
+            msg!("Incorect sender account");
             todo!()
         }
+        
+        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[base_seed]];
 
         let rent = Rent::from_account_info(rent_info)?;
         invoke_signed(
-            &system_instruction::create_account(
+            &system_instruction::create_account_with_seed(
                 funder_account_info.key,
                 sender_info.key,
+                authority_info.key,
+                s_seed,
                 rent.minimum_balance(SenderAccount::LEN),
                 SenderAccount::LEN as _,
                 &crate::id(),
             ),
-            &[],
-            &[&[]],
+            &[funder_account_info.clone(), sender_info.clone(), authority_info.clone()],
+            &[signature],
         )?;
-
+        
         SenderAccount::new(*manager_account_info.key, eth_address)
             .serialize(&mut *sender_info.data.borrow_mut())?;
 

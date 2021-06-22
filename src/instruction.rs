@@ -7,6 +7,7 @@ use solana_program::{
     pubkey::Pubkey,
     system_program, sysvar,
 };
+use std::str;
 
 /// Instruction definition
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
@@ -89,14 +90,19 @@ pub fn create_sender(
     let create_data = Instructions::CreateSender { eth_address };
     let data = create_data.try_to_vec()?;
 
-    let (authority, _) = Pubkey::find_program_address(&[manager_account.as_ref()], program_id);
-    let (sender, _) = Pubkey::find_program_address(&[&authority.to_bytes(), b"S_", eth_address.as_ref()], program_id);
+    let (authority, base_seed) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
+    let mut seed = Vec::new();
+    seed.extend_from_slice(b"S_");
+    seed.extend_from_slice(&eth_address.as_ref());
+    let s_seed = str::from_utf8(seed.as_ref()).unwrap();
+    let sender_address = Pubkey::create_with_seed(&authority, s_seed, &crate::id())?;
+        
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
         AccountMeta::new_readonly(authority, false),
         AccountMeta::new_readonly(*funder_account, true),
-        AccountMeta::new_readonly(sender, false),
+        AccountMeta::new(sender_address, false),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
     ];
@@ -116,7 +122,7 @@ pub fn delete_sender(
     sender: &Pubkey,
     refunder_account: &Pubkey,
 ) -> Result<Instruction, ProgramError> {
-    let (authority, _) = Pubkey::find_program_address(&[manager_account.as_ref()], program_id);
+    let (authority, base_seed) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),

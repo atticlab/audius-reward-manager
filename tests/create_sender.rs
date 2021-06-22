@@ -4,7 +4,7 @@ use audius_reward_manager::{instruction, state::RewardManager};
 use borsh::BorshSerialize;
 use solana_program::pubkey::Pubkey;
 use solana_program_test::*;
-use solana_sdk::{account::Account, signature::Keypair, signer::Signer, transaction::Transaction, system_instruction::create_account};
+use solana_sdk::{account::Account, signature::Keypair, signer::Signer, transaction::Transaction };
 use utils::program_test;
 
 #[tokio::test]
