@@ -68,7 +68,7 @@ impl Processor {
     fn process_create_sender<'a>(
         program_id: &Pubkey,
         eth_address: [u8; 20],
-        _reward_manager_info: &AccountInfo<'a>,
+        reward_manager_info: &AccountInfo<'a>,
         manager_account_info: &AccountInfo<'a>,
         authority_info: &AccountInfo<'a>,
         funder_account_info: &AccountInfo<'a>,
@@ -76,7 +76,7 @@ impl Processor {
         _sys_prog_info: &AccountInfo<'a>,
         rent_info: &AccountInfo<'a>,
     ) -> ProgramResult {
-        let reward_manager = RewardManager::try_from_slice(&manager_account_info.data.borrow())?;
+        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
         if !reward_manager.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
         }

@@ -14,16 +14,17 @@ async fn success() {
     let reward_manager = Pubkey::new_unique();
     let token_account = Pubkey::new_unique();
     let manager_account = Keypair::new();
-    let sender = Keypair::new();
+    let eth_address = [0u8; 20];
 
-    let mut data = Vec::with_capacity(RewardManager::LEN);
+    let (authority, _) = Pubkey::find_program_address(&[manager_account.pubkey().as_ref()], &audius_reward_manager::id());
+    let (sender, _) = Pubkey::find_program_address(&[&authority.to_bytes(), b"S_", eth_address.as_ref()], &audius_reward_manager::id());
+
     let reward_manager_data = RewardManager::new(token_account, manager_account.pubkey(), 3);
-    reward_manager_data.serialize(&mut data).unwrap();
     program_test.add_account(
         reward_manager,
         Account {
             lamports: 9000,
-            data,
+            data: reward_manager_data.try_to_vec().unwrap(),
             owner: audius_reward_manager::id(),
             executable: false,
             rent_epoch: 0,
@@ -31,27 +32,18 @@ async fn success() {
     );
 
     let mut context = program_test.start_with_context().await;
-    let rent = context.banks_client.get_rent().await.unwrap();
     let tx = Transaction::new_signed_with_payer(
         &[
-            create_account(
-                &context.payer.pubkey(),
-                &sender.pubkey(),
-                rent.minimum_balance(audius_reward_manager::state::SenderAccount::LEN),
-                audius_reward_manager::state::SenderAccount::LEN as _,
-                &audius_reward_manager::id(),
-            ),
             instruction::create_sender(
             &audius_reward_manager::id(),
             &reward_manager,
             &manager_account.pubkey(),
             &context.payer.pubkey(),
-            &sender.pubkey(),
-            [0u8; 20]
+            eth_address,
         )
         .unwrap()],
         Some(&context.payer.pubkey()),
-        &[&context.payer, &sender, &manager_account],
+        &[&context.payer, &manager_account],
         context.last_blockhash,
     );
 
@@ -61,7 +53,7 @@ async fn success() {
         reward_manager_data,
         context
             .banks_client
-            .get_account_data_with_borsh(sender.pubkey())
+            .get_account_data_with_borsh(sender)
             .await
             .unwrap()
     );

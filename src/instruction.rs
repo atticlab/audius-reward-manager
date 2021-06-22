@@ -84,19 +84,19 @@ pub fn create_sender(
     reward_manager: &Pubkey,
     manager_account: &Pubkey,
     funder_account: &Pubkey,
-    sender: &Pubkey,
     eth_address: [u8; 20],
 ) -> Result<Instruction, ProgramError> {
     let create_data = Instructions::CreateSender { eth_address };
     let data = create_data.try_to_vec()?;
 
     let (authority, _) = Pubkey::find_program_address(&[manager_account.as_ref()], program_id);
+    let (sender, _) = Pubkey::find_program_address(&[&authority.to_bytes(), b"S_", eth_address.as_ref()], program_id);
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
         AccountMeta::new_readonly(authority, false),
         AccountMeta::new_readonly(*funder_account, true),
-        AccountMeta::new_readonly(*sender, false),
+        AccountMeta::new_readonly(sender, false),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
     ];
