@@ -59,9 +59,9 @@ pub fn init(
     min_votes: u8,
 ) -> Result<Instruction, ProgramError> {
     let init_data = Instructions::InitRewardManager { min_votes };
+    let data = init_data.try_to_vec()?;
 
     let (authority, _) = Pubkey::find_program_address(&[reward_manager.as_ref()], program_id);
-    let data = init_data.try_to_vec()?;
     let accounts = vec![
         AccountMeta::new(*reward_manager, false),
         AccountMeta::new(*token_account, false),
@@ -85,7 +85,11 @@ pub fn create_sender(
     manager_account: &Pubkey,
     funder_account: &Pubkey,
     sender: &Pubkey,
+    eth_address: [u8; 20],
 ) -> Result<Instruction, ProgramError> {
+    let create_data = Instructions::CreateSender { eth_address };
+    let data = create_data.try_to_vec()?;
+
     let (authority, _) = Pubkey::find_program_address(&[manager_account.as_ref()], program_id);
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
@@ -100,7 +104,7 @@ pub fn create_sender(
     Ok(Instruction {
         program_id: *program_id,
         accounts,
-        data: vec![],
+        data,
     })
 }
 

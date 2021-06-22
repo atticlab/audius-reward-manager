@@ -47,6 +47,7 @@ async fn success() {
             &manager_account.pubkey(),
             &context.payer.pubkey(),
             &sender.pubkey(),
+            [0u8; 20]
         )
         .unwrap()],
         Some(&context.payer.pubkey()),
