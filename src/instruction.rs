@@ -90,13 +90,14 @@ pub fn create_sender(
     let create_data = Instructions::CreateSender { eth_address };
     let data = create_data.try_to_vec()?;
 
-    let (authority, _) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
+    let (authority, _) =
+        Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
     let mut seed = Vec::new();
     seed.extend_from_slice(b"S_");
     seed.extend_from_slice(&eth_address.as_ref());
     let s_seed = str::from_utf8(seed.as_ref()).unwrap();
     let sender_address = Pubkey::create_with_seed(&authority, s_seed, &crate::id())?;
-        
+
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
@@ -119,21 +120,32 @@ pub fn delete_sender(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
     manager_account: &Pubkey,
-    sender: &Pubkey,
     refunder_account: &Pubkey,
+    eth_address: [u8; 20],
 ) -> Result<Instruction, ProgramError> {
-    let (authority, _) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
+    let delete_data = Instructions::DeleteSender;
+    let data = delete_data.try_to_vec()?;
+
+    let (authority, _) =
+        Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
+    let mut seed = Vec::new();
+    seed.extend_from_slice(b"S_");
+    seed.extend_from_slice(&eth_address.as_ref());
+    let s_seed = str::from_utf8(seed.as_ref()).unwrap();
+    let sender_address = Pubkey::create_with_seed(&authority, s_seed, &crate::id())?;
+
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
         AccountMeta::new_readonly(authority, false),
-        AccountMeta::new(*sender, false),
-        AccountMeta::new_readonly(*refunder_account, false),
+        AccountMeta::new(sender_address, false),
+        AccountMeta::new(*refunder_account, false),
+        AccountMeta::new_readonly(system_program::id(), false),
     ];
 
     Ok(Instruction {
         program_id: *program_id,
         accounts,
-        data: vec![],
+        data,
     })
 }

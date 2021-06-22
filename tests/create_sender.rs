@@ -1,12 +1,15 @@
 #![cfg(feature = "test-bpf")]
 mod utils;
-use audius_reward_manager::{instruction, state::{RewardManager, SenderAccount}};
+use audius_reward_manager::{
+    instruction,
+    state::{RewardManager, SenderAccount},
+};
 use borsh::BorshSerialize;
 use solana_program::pubkey::Pubkey;
 use solana_program_test::*;
-use solana_sdk::{account::Account, signature::Keypair, signer::Signer, transaction::Transaction };
-use utils::program_test;
+use solana_sdk::{account::Account, signature::Keypair, signer::Signer, transaction::Transaction};
 use std::str;
+use utils::program_test;
 
 #[tokio::test]
 async fn success() {
@@ -31,8 +34,7 @@ async fn success() {
 
     let mut context = program_test.start_with_context().await;
     let tx = Transaction::new_signed_with_payer(
-        &[
-            instruction::create_sender(
+        &[instruction::create_sender(
             &audius_reward_manager::id(),
             &reward_manager,
             &manager_account.pubkey(),
@@ -47,12 +49,16 @@ async fn success() {
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    let (authority, _) = Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], &audius_reward_manager::id());
+    let (authority, _) = Pubkey::find_program_address(
+        &[&reward_manager.to_bytes()[..32]],
+        &audius_reward_manager::id(),
+    );
     let mut seed = Vec::new();
     seed.extend_from_slice(b"S_");
     seed.extend_from_slice(&eth_address.as_ref());
     let s_seed = str::from_utf8(seed.as_ref()).unwrap();
-    let sender_address = Pubkey::create_with_seed(&authority, s_seed, &audius_reward_manager::id()).unwrap();
+    let sender_address =
+        Pubkey::create_with_seed(&authority, s_seed, &audius_reward_manager::id()).unwrap();
 
     assert_eq!(
         SenderAccount::new(manager_account.pubkey(), eth_address),

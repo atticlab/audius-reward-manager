@@ -32,6 +32,7 @@ impl Processor {
         mint_info: &AccountInfo<'a>,
         manager_info: &AccountInfo<'a>,
         athority_info: &AccountInfo<'a>,
+        spl_token_info: &AccountInfo<'a>,
         rent: &AccountInfo<'a>,
         min_votes: u8,
     ) -> ProgramResult {
@@ -40,8 +41,7 @@ impl Processor {
             return Err(ProgramError::AccountAlreadyInitialized);
         }
 
-        let (authority, _) =
-            Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
+        let (authority, _) = Pubkey::find_program_address(&[&reward_manager_info.key.to_bytes()[..32]], program_id);
         if authority != *athority_info.key {
             return Err(ProgramError::InvalidAccountData);
         }
@@ -54,6 +54,7 @@ impl Processor {
                 &authority,
             )?,
             &[
+                spl_token_info.clone(),
                 token_account_info.clone(),
                 mint_info.clone(),
                 athority_info.clone(),
@@ -63,6 +64,7 @@ impl Processor {
 
         RewardManager::new(*token_account_info.key, *manager_info.key, min_votes)
             .serialize(&mut *reward_manager_info.data.borrow_mut())?;
+        
         Ok(())
     }
 
@@ -87,18 +89,19 @@ impl Processor {
             todo!();
         }
 
-        let (authority, base_seed) = Pubkey::find_program_address(&[&reward_manager_info.key.to_bytes()[..32]], program_id);
+        let (authority, base_seed) =
+            Pubkey::find_program_address(&[&reward_manager_info.key.to_bytes()[..32]], program_id);
 
         let mut seed = Vec::new();
         seed.extend_from_slice(b"S_");
         seed.extend_from_slice(&eth_address.as_ref());
         let s_seed = str::from_utf8(seed.as_ref()).unwrap();
-        let sender_address = Pubkey::create_with_seed(&authority, s_seed, &crate::id())?;
+        let sender_address = Pubkey::create_with_seed(&authority, s_seed, program_id)?;
         if *sender_info.key != sender_address {
             msg!("Incorect sender account");
             todo!()
         }
-        
+
         let signature = &[&reward_manager_info.key.to_bytes()[..32], &[base_seed]];
 
         let rent = Rent::from_account_info(rent_info)?;
@@ -110,12 +113,17 @@ impl Processor {
                 s_seed,
                 rent.minimum_balance(SenderAccount::LEN),
                 SenderAccount::LEN as _,
-                &crate::id(),
+                program_id,
             ),
-            &[funder_account_info.clone(), sender_info.clone(), authority_info.clone()],
+            &[
+
+                funder_account_info.clone(),
+                sender_info.clone(),
+                authority_info.clone(),
+            ],
             &[signature],
         )?;
-        
+
         SenderAccount::new(*manager_account_info.key, eth_address)
             .serialize(&mut *sender_info.data.borrow_mut())?;
 
@@ -124,25 +132,41 @@ impl Processor {
 
     fn process_delete_sender<'a>(
         program_id: &Pubkey,
-        _authority_info: &AccountInfo<'a>,
+        authority_info: &AccountInfo<'a>,
         reward_manager_info: &AccountInfo<'a>,
         refunder_account_info: &AccountInfo<'a>,
         sender_info: &AccountInfo<'a>,
+        sys_prog: &AccountInfo<'a>,
     ) -> ProgramResult {
-        let (_, base_seed) = Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
+        let sender_account = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
+
+        let (_, base_seed) = Pubkey::find_program_address(&[&reward_manager_info.key.to_bytes()[..32]], program_id);
+
+        let mut seed = Vec::new();
+        seed.extend_from_slice(b"S_");
+        seed.extend_from_slice(&sender_account.eth_address.as_ref());
+        let s_seed = str::from_utf8(seed.as_ref()).unwrap();
+        let sender_address = Pubkey::create_with_seed(&authority_info.key, s_seed, program_id)?;
 
         let signature = &[&reward_manager_info.key.to_bytes()[..32], &[base_seed]];
 
         invoke_signed(
-            &system_instruction::transfer(
-                sender_info.key,
-                &refunder_account_info.key,
+            &system_instruction::transfer_with_seed(
+                &sender_address,
+                authority_info.key,
+                s_seed.to_string(),
+                program_id,
+                refunder_account_info.key,
                 sender_info.lamports(),
             ),
-            &[sender_info.clone(), refunder_account_info.clone()],
+            &[
+                sender_info.clone(),
+                authority_info.clone(),
+                refunder_account_info.clone(),
+            ],
             &[signature],
         )?;
-        
+
         Ok(())
     }
 
@@ -173,6 +197,7 @@ impl Processor {
                     mint,
                     manager,
                     athority,
+                    _spl_token,
                     rent,
                     min_votes,
                 )
@@ -208,13 +233,15 @@ impl Processor {
                 let authority = next_account_info(account_info_iter)?;
                 let sender = next_account_info(account_info_iter)?;
                 let refunder = next_account_info(account_info_iter)?;
+                let sys_prog = next_account_info(account_info_iter)?;
 
                 Self::process_delete_sender(
-                    program_id, 
-                    authority, 
-                    reward_manager, 
-                    refunder, 
+                    program_id,
+                    authority,
+                    reward_manager,
+                    refunder,
                     sender,
+                    sys_prog,
                 )
             }
         }
