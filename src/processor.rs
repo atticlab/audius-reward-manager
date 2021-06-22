@@ -68,12 +68,12 @@ impl Processor {
     fn process_create_sender<'a>(
         program_id: &Pubkey,
         eth_address: [u8; 20],
-        reward_manager_info: &AccountInfo<'a>,
+        _reward_manager_info: &AccountInfo<'a>,
         manager_account_info: &AccountInfo<'a>,
         authority_info: &AccountInfo<'a>,
         funder_account_info: &AccountInfo<'a>,
         sender_info: &AccountInfo<'a>,
-        sys_prog_info: &AccountInfo<'a>,
+        _sys_prog_info: &AccountInfo<'a>,
         rent_info: &AccountInfo<'a>,
     ) -> ProgramResult {
         let reward_manager = RewardManager::try_from_slice(&manager_account_info.data.borrow())?;
@@ -85,7 +85,7 @@ impl Processor {
             msg!("Incorent account manager account");
             todo!();
         }
-
+        
         let addidable_sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
         if addidable_sender.is_initialized() {
             return Err(ProgramError::AccountAlreadyInitialized);
@@ -121,7 +121,7 @@ impl Processor {
 
     fn process_delete_sender<'a>(
         program_id: &Pubkey,
-        authority_info: &AccountInfo<'a>,
+        _authority_info: &AccountInfo<'a>,
         reward_manager_info: &AccountInfo<'a>,
         refunder_account_info: &AccountInfo<'a>,
         sender_info: &AccountInfo<'a>,
@@ -129,7 +129,7 @@ impl Processor {
         let sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
         let (authority, _) =
             Pubkey::find_program_address(&[reward_manager_info.key.as_ref()], program_id);
-        let (sender_address, seed) = Pubkey::find_program_address(
+        let (_, seed) = Pubkey::find_program_address(
             &[&authority.to_bytes(), b"S_", sender.eth_address.as_ref()],
             program_id,
         );
@@ -204,7 +204,7 @@ impl Processor {
                 msg!("Instruction: DeleteSender");
 
                 let reward_manager = next_account_info(account_info_iter)?;
-                let manager_account = next_account_info(account_info_iter)?;
+                let _manager_account = next_account_info(account_info_iter)?;
                 let authority = next_account_info(account_info_iter)?;
                 let sender = next_account_info(account_info_iter)?;
                 let refunder = next_account_info(account_info_iter)?;
