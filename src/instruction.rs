@@ -9,6 +9,8 @@ use solana_program::{
 };
 use std::str;
 
+use crate::utils::{get_address_pair, get_base_address};
+
 /// Instruction definition
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub enum Instructions {
@@ -62,13 +64,14 @@ pub fn init(
     let init_data = Instructions::InitRewardManager { min_votes };
     let data = init_data.try_to_vec()?;
 
-    let (authority, _) = Pubkey::find_program_address(&[reward_manager.as_ref()], program_id);
+    let (base, _) = get_base_address(reward_manager, program_id);
+
     let accounts = vec![
         AccountMeta::new(*reward_manager, false),
         AccountMeta::new(*token_account, false),
         AccountMeta::new_readonly(*mint, false),
         AccountMeta::new_readonly(*manager, false),
-        AccountMeta::new_readonly(authority, false),
+        AccountMeta::new_readonly(base, false),
         AccountMeta::new_readonly(spl_token::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
     ];
@@ -90,20 +93,14 @@ pub fn create_sender(
     let create_data = Instructions::CreateSender { eth_address };
     let data = create_data.try_to_vec()?;
 
-    let (authority, _) =
-        Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
-    let mut seed = Vec::new();
-    seed.extend_from_slice(b"S_");
-    seed.extend_from_slice(&eth_address.as_ref());
-    let s_seed = str::from_utf8(seed.as_ref()).unwrap();
-    let sender_address = Pubkey::create_with_seed(&authority, s_seed, &crate::id())?;
+    let pair = get_address_pair(program_id, reward_manager, eth_address)?;
 
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
-        AccountMeta::new_readonly(authority, false),
+        AccountMeta::new_readonly(pair.base.address, false),
         AccountMeta::new(*funder_account, true),
-        AccountMeta::new(sender_address, false),
+        AccountMeta::new(pair.derive.address, false),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
     ];
@@ -126,19 +123,13 @@ pub fn delete_sender(
     let delete_data = Instructions::DeleteSender;
     let data = delete_data.try_to_vec()?;
 
-    let (authority, _) =
-        Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id);
-    let mut seed = Vec::new();
-    seed.extend_from_slice(b"S_");
-    seed.extend_from_slice(&eth_address.as_ref());
-    let s_seed = str::from_utf8(seed.as_ref()).unwrap();
-    let sender_address = Pubkey::create_with_seed(&authority, s_seed, &crate::id())?;
+    let pair = get_address_pair(program_id, reward_manager, eth_address)?;
 
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
-        AccountMeta::new_readonly(authority, false),
-        AccountMeta::new(sender_address, false),
+        AccountMeta::new_readonly(pair.base.address, false),
+        AccountMeta::new(pair.derive.address, false),
         AccountMeta::new(*refunder_account, false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];
