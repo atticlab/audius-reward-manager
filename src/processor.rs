@@ -1,9 +1,6 @@
 //! Program state processor
 
-use crate::{
-    instruction::Instructions,
-    state::{RewardManager, SenderAccount},
-};
+use crate::{instruction::Instructions, state::{RewardManager, SenderAccount}, utils::{get_address_pair, get_base_address}};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::next_account_info,
@@ -41,8 +38,8 @@ impl Processor {
             return Err(ProgramError::AccountAlreadyInitialized);
         }
 
-        let (authority, _) = Pubkey::find_program_address(&[&reward_manager_info.key.to_bytes()[..32]], program_id);
-        if authority != *athority_info.key {
+        let (base, _) = get_base_address(reward_manager_info.key, program_id);
+        if base != *athority_info.key {
             return Err(ProgramError::InvalidAccountData);
         }
 
@@ -51,7 +48,7 @@ impl Processor {
                 &spl_token::id(),
                 token_account_info.key,
                 mint_info.key,
-                &authority,
+                &base,
             )?,
             &[
                 spl_token_info.clone(),
@@ -89,20 +86,13 @@ impl Processor {
             todo!();
         }
 
-        let (authority, base_seed) =
-            Pubkey::find_program_address(&[&reward_manager_info.key.to_bytes()[..32]], program_id);
-
-        let mut seed = Vec::new();
-        seed.extend_from_slice(b"S_");
-        seed.extend_from_slice(&eth_address.as_ref());
-        let s_seed = str::from_utf8(seed.as_ref()).unwrap();
-        let sender_address = Pubkey::create_with_seed(&authority, s_seed, program_id)?;
-        if *sender_info.key != sender_address {
+        let pair = get_address_pair(program_id, reward_manager_info.key, eth_address)?;
+        if *sender_info.key != pair.derive.address {
             msg!("Incorect sender account");
             todo!()
         }
 
-        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[base_seed]];
+        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
 
         let rent = Rent::from_account_info(rent_info)?;
         invoke_signed(
@@ -110,7 +100,7 @@ impl Processor {
                 funder_account_info.key,
                 sender_info.key,
                 authority_info.key,
-                s_seed,
+                &pair.derive.seed,
                 rent.minimum_balance(SenderAccount::LEN),
                 SenderAccount::LEN as _,
                 program_id,
@@ -140,21 +130,15 @@ impl Processor {
     ) -> ProgramResult {
         let sender_account = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
 
-        let (_, base_seed) = Pubkey::find_program_address(&[&reward_manager_info.key.to_bytes()[..32]], program_id);
+        let pair = get_address_pair(program_id, reward_manager_info.key, sender_account.eth_address)?;
 
-        let mut seed = Vec::new();
-        seed.extend_from_slice(b"S_");
-        seed.extend_from_slice(&sender_account.eth_address.as_ref());
-        let s_seed = str::from_utf8(seed.as_ref()).unwrap();
-        let sender_address = Pubkey::create_with_seed(&authority_info.key, s_seed, program_id)?;
-
-        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[base_seed]];
+        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
 
         invoke_signed(
             &system_instruction::transfer_with_seed(
-                &sender_address,
+                &pair.derive.address,
                 authority_info.key,
-                s_seed.to_string(),
+                pair.derive.seed,
                 program_id,
                 refunder_account_info.key,
                 sender_info.lamports(),
