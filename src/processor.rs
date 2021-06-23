@@ -99,14 +99,13 @@ impl Processor {
             &system_instruction::create_account_with_seed(
                 funder_account_info.key,
                 sender_info.key,
-                authority_info.key,
-                &pair.derive.seed,
+                &pair.base.address,
+                pair.derive.seed.as_str(),
                 rent.minimum_balance(SenderAccount::LEN),
                 SenderAccount::LEN as _,
                 program_id,
             ),
             &[
-
                 funder_account_info.clone(),
                 sender_info.clone(),
                 authority_info.clone(),

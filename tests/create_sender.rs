@@ -3,6 +3,7 @@ mod utils;
 use audius_reward_manager::{
     instruction,
     state::{RewardManager, SenderAccount},
+    utils::get_address_pair,
 };
 use borsh::BorshSerialize;
 use solana_program::pubkey::Pubkey;
@@ -49,22 +50,13 @@ async fn success() {
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    let (authority, _) = Pubkey::find_program_address(
-        &[&reward_manager.to_bytes()[..32]],
-        &audius_reward_manager::id(),
-    );
-    let mut seed = Vec::new();
-    seed.extend_from_slice(b"S_");
-    seed.extend_from_slice(&eth_address.as_ref());
-    let s_seed = str::from_utf8(seed.as_ref()).unwrap();
-    let sender_address =
-        Pubkey::create_with_seed(&authority, s_seed, &audius_reward_manager::id()).unwrap();
+    let pair = get_address_pair(&audius_reward_manager::id(), &reward_manager, eth_address).unwrap();
 
     assert_eq!(
         SenderAccount::new(manager_account.pubkey(), eth_address),
         context
             .banks_client
-            .get_account_data_with_borsh(sender_address)
+            .get_account_data_with_borsh(pair.derive.address)
             .await
             .unwrap()
     );
