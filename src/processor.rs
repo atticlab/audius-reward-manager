@@ -1,10 +1,6 @@
 //! Program state processor
 
-use crate::{
-    instruction::Instructions,
-    state::{RewardManager, SenderAccount},
-    utils::{get_address_pair, get_base_address},
-};
+use crate::{error::AudiusRewardError, instruction::Instructions, state::{RewardManager, SenderAccount}, utils::{get_address_pair, get_base_address}};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::next_account_info,
@@ -94,14 +90,12 @@ impl Processor {
         }
 
         if reward_manager.manager != *manager_account_info.key {
-            msg!("Incorect account manager");
-            todo!();
+            return Err(AudiusRewardError::IncorectManagerAccount.into());
         }
 
         let pair = get_address_pair(program_id, reward_manager_info.key, eth_address)?;
         if *sender_info.key != pair.derive.address {
-            msg!("Incorect sender account");
-            todo!()
+            return Err(AudiusRewardError::IncorectSenderAccount.into());
         }
 
         let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
@@ -135,19 +129,18 @@ impl Processor {
         _program_id: &Pubkey,
         reward_manager_info: &AccountInfo<'a>,
         manager_account_info: &AccountInfo<'a>,
-        _authority_info: &AccountInfo<'a>,
         sender_info: &AccountInfo<'a>,
         refunder_account_info: &AccountInfo<'a>,
         _sys_prog: &AccountInfo<'a>,
     ) -> ProgramResult {
         let sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
         if sender.reward_manager != *reward_manager_info.key {
-            todo!()
+            return Err(AudiusRewardError::IncorectRewardManager.into());
         }
 
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
         if reward_manager.manager != *manager_account_info.key {
-            todo!()
+            return Err(AudiusRewardError::IncorectManagerAccount.into());
         }
 
         Self::transfer_all(sender_info, refunder_account_info)?;
@@ -215,7 +208,6 @@ impl Processor {
 
                 let reward_manager = next_account_info(account_info_iter)?;
                 let manager_account = next_account_info(account_info_iter)?;
-                let authority = next_account_info(account_info_iter)?;
                 let sender = next_account_info(account_info_iter)?;
                 let refunder = next_account_info(account_info_iter)?;
                 let sys_prog = next_account_info(account_info_iter)?;
@@ -224,7 +216,6 @@ impl Processor {
                     program_id,
                     reward_manager,
                     manager_account,
-                    authority,
                     sender,
                     refunder,
                     sys_prog,

@@ -127,7 +127,6 @@ pub fn delete_sender(
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
-        AccountMeta::new_readonly(pair.base.address, false),
         AccountMeta::new(pair.derive.address, false),
         AccountMeta::new(*refunder_account, false),
         AccountMeta::new_readonly(system_program::id(), false),

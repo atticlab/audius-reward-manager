@@ -11,29 +11,30 @@ use thiserror::Error;
 
 /// Errors that may be returned by the Template program.
 #[derive(Clone, Debug, Eq, Error, FromPrimitive, PartialEq)]
-pub enum ProgramTemplateError {
-    /// Example error
-    #[error("Example error")]
-    ExampleError,
+pub enum AudiusRewardError {
+    #[error("Incorect reward manager")]
+    IncorectRewardManager,
+    #[error("Incorect account manager")]
+    IncorectManagerAccount,
+    #[error("Incorect sender account")]
+    IncorectSenderAccount,
 }
-impl From<ProgramTemplateError> for ProgramError {
-    fn from(e: ProgramTemplateError) -> Self {
+impl From<AudiusRewardError> for ProgramError {
+    fn from(e: AudiusRewardError) -> Self {
         ProgramError::Custom(e as u32)
     }
 }
-impl<T> DecodeError<T> for ProgramTemplateError {
+impl<T> DecodeError<T> for AudiusRewardError {
     fn type_of() -> &'static str {
-        "ProgramTemplateError"
+        "AudiusRewardError"
     }
 }
 
-impl PrintProgramError for ProgramTemplateError {
+impl PrintProgramError for AudiusRewardError {
     fn print<E>(&self)
     where
         E: 'static + std::error::Error + DecodeError<E> + PrintProgramError + FromPrimitive,
     {
-        match self {
-            ProgramTemplateError::ExampleError => msg!("Example error message"),
-        }
+        msg!(&self.to_string())
     }
 }
