@@ -1,5 +1,6 @@
+#![allow(missing_docs)]
+
 use solana_program::pubkey::{Pubkey, PubkeyError};
-use solana_sdk::bs58;
 
 /// Represent compressed ethereum pubkey
 pub type EthereumAddress = [u8; 20];
