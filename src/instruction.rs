@@ -9,6 +9,16 @@ use solana_program::{
 };
 
 use crate::utils::{get_address_pair, get_base_address};
+/// `Transfer` instruction parameters
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+pub struct Transfer {
+    /// Amount to transfer
+    pub amount: u64,
+    /// ID generated on backend
+    pub id: String,
+    /// Recipient's Eth address
+    pub eth_recipient: [u8; 20],
+}
 
 /// Instruction definition
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
@@ -49,6 +59,26 @@ pub enum Instructions {
     ///   3. `[w]`  Removed sender
     ///   4. `[]`  Refunder account
     DeleteSender,
+
+    ///   Transfer tokens to pointed receiver
+    /// 
+    ///   0. `[]` `Reward Manager`
+    ///   1. `[]` `Reward Manager` authority
+    ///   2. `[w]` Vault with all the "reward" tokens. Program is authority
+    ///   3. `[]` Bot oracle
+    ///   4. `[w]` Recipient. Key generated from Eth address
+    ///   5. `[sw]` Funder. Account which pay for new account creation
+    ///   6. `[]` Senders
+    ///   ...
+    ///   n. `[]`
+    Transfer {
+        /// Amount to transfer
+        amount: u64,
+        /// ID generated on backend
+        id: String,
+        /// Recipient's Eth address
+        eth_recipient: [u8; 20],
+    }
 }
 
 /// Create `InitRewardManager` instruction
@@ -132,6 +162,39 @@ pub fn delete_sender(
         AccountMeta::new(*refunder_account, false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];
+
+    Ok(Instruction {
+        program_id: *program_id,
+        accounts,
+        data,
+    })
+}
+
+/// Create `Transfer` instruction
+pub fn transfer(
+    program_id: &Pubkey,
+    reward_manager: &Pubkey,
+    reward_manager_authority: &Pubkey,
+    vault_token_account: &Pubkey,
+    bot_oracle: &Pubkey,
+    funder: &Pubkey,
+    senders: Vec<Pubkey>,
+    params: Transfer,
+) -> Result<Instruction, ProgramError> {
+    let recipient = Pubkey::find_program_address(&[reward_manager.as_ref(), params.eth_recipient.as_ref()], program_id).0;
+    let data = Instructions::Transfer{amount: params.amount, id: params.id, eth_recipient: params.eth_recipient}.try_to_vec()?;
+
+    let mut accounts = vec![
+        AccountMeta::new_readonly(*reward_manager, false),
+        AccountMeta::new_readonly(*reward_manager_authority, false),
+        AccountMeta::new(recipient, false),
+        AccountMeta::new(*vault_token_account, false),
+        AccountMeta::new_readonly(*bot_oracle, false),
+        AccountMeta::new(*funder, true),
+    ];
+    for acc in senders {
+        accounts.push(AccountMeta::new_readonly(acc, false))
+    }
 
     Ok(Instruction {
         program_id: *program_id,

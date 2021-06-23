@@ -230,6 +230,10 @@ impl Processor {
                     sys_prog,
                 )
             }
+            Instructions::Transfer { amount, id, eth_recipient } => {
+                msg!("Instruction: Transfer");
+                unimplemented!()
+            }
         }
     }
 }
