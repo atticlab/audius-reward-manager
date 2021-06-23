@@ -7,7 +7,6 @@ use solana_program::{
     pubkey::Pubkey,
     system_program, sysvar,
 };
-use std::str;
 
 use crate::utils::{get_address_pair, get_base_address};
 

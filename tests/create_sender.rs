@@ -9,7 +9,6 @@ use borsh::BorshSerialize;
 use solana_program::pubkey::Pubkey;
 use solana_program_test::*;
 use solana_sdk::{account::Account, signature::Keypair, signer::Signer, transaction::Transaction};
-use std::str;
 use utils::program_test;
 
 #[tokio::test]
@@ -50,7 +49,8 @@ async fn success() {
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    let pair = get_address_pair(&audius_reward_manager::id(), &reward_manager, eth_address).unwrap();
+    let pair =
+        get_address_pair(&audius_reward_manager::id(), &reward_manager, eth_address).unwrap();
 
     assert_eq!(
         SenderAccount::new(manager_account.pubkey(), eth_address),

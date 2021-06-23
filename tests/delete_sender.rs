@@ -1,6 +1,6 @@
 #![cfg(feature = "test-bpf")]
 mod utils;
-use audius_reward_manager::{instruction, state::SenderAccount, utils::get_address_pair,};
+use audius_reward_manager::{instruction, state::{RewardManager, SenderAccount}, utils::get_address_pair};
 use borsh::BorshSerialize;
 use solana_program::pubkey::Pubkey;
 use solana_program_test::*;
@@ -11,12 +11,27 @@ use utils::program_test;
 async fn success() {
     let mut program_test = program_test();
 
+    let token_account = Pubkey::new_unique();
     let reward_manager = Pubkey::new_unique();
     let manager_account = Keypair::new();
     let refunder_account = Pubkey::new_unique();
     let eth_address = [0u8; 20];
 
-    let pair = get_address_pair(&audius_reward_manager::id(), &reward_manager, eth_address).unwrap();
+    let pair =
+        get_address_pair(&audius_reward_manager::id(), &reward_manager, eth_address).unwrap();
+
+    
+    let reward_manager_data = RewardManager::new(token_account, manager_account.pubkey(), 3);
+    program_test.add_account(
+        reward_manager,
+        Account {
+            lamports: 9000,
+            data: reward_manager_data.try_to_vec().unwrap(),
+            owner: audius_reward_manager::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
 
     let sender_data = SenderAccount::new(reward_manager, eth_address);
     program_test.add_account(

@@ -1,6 +1,10 @@
 //! Program state processor
 
-use crate::{instruction::Instructions, state::{RewardManager, SenderAccount}, utils::{get_address_pair, get_base_address}};
+use crate::{
+    instruction::Instructions,
+    state::{RewardManager, SenderAccount},
+    utils::{get_address_pair, get_base_address},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::next_account_info,
@@ -15,12 +19,20 @@ use solana_program::{
     system_instruction,
     sysvar::Sysvar,
 };
-use std::str;
 
 /// Program state handler.
 pub struct Processor;
 
 impl Processor {
+    /// Transfer all the SOL from source to receiver
+    pub fn transfer_all(source: &AccountInfo, receiver: &AccountInfo) -> Result<(), ProgramError> {
+        let mut from = source.try_borrow_mut_lamports()?;
+        let mut to = receiver.try_borrow_mut_lamports()?;
+        **to += **from;
+        **from = 0;
+        Ok(())
+    }
+
     /// Process example instruction
     fn process_init_instruction<'a>(
         program_id: &Pubkey,
@@ -61,7 +73,7 @@ impl Processor {
 
         RewardManager::new(*token_account_info.key, *manager_info.key, min_votes)
             .serialize(&mut *reward_manager_info.data.borrow_mut())?;
-        
+
         Ok(())
     }
 
@@ -120,36 +132,26 @@ impl Processor {
     }
 
     fn process_delete_sender<'a>(
-        program_id: &Pubkey,
-        authority_info: &AccountInfo<'a>,
+        _program_id: &Pubkey,
         reward_manager_info: &AccountInfo<'a>,
-        refunder_account_info: &AccountInfo<'a>,
+        manager_account_info: &AccountInfo<'a>,
+        _authority_info: &AccountInfo<'a>,
         sender_info: &AccountInfo<'a>,
-        sys_prog: &AccountInfo<'a>,
+        refunder_account_info: &AccountInfo<'a>,
+        _sys_prog: &AccountInfo<'a>,
     ) -> ProgramResult {
-        let sender_account = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
+        let sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
+        if sender.reward_manager != *reward_manager_info.key {
+            todo!()
+        }
 
-        let pair = get_address_pair(program_id, reward_manager_info.key, sender_account.eth_address)?;
+        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
+        if reward_manager.manager != *manager_account_info.key {
+            todo!()
+        }
 
-        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
-
-        invoke_signed(
-            &system_instruction::transfer_with_seed(
-                &pair.derive.address,
-                authority_info.key,
-                pair.derive.seed,
-                program_id,
-                refunder_account_info.key,
-                sender_info.lamports(),
-            ),
-            &[
-                sender_info.clone(),
-                authority_info.clone(),
-                refunder_account_info.clone(),
-            ],
-            &[signature],
-        )?;
-
+        Self::transfer_all(sender_info, refunder_account_info)?;
+        
         Ok(())
     }
 
@@ -212,7 +214,7 @@ impl Processor {
                 msg!("Instruction: DeleteSender");
 
                 let reward_manager = next_account_info(account_info_iter)?;
-                let _manager_account = next_account_info(account_info_iter)?;
+                let manager_account = next_account_info(account_info_iter)?;
                 let authority = next_account_info(account_info_iter)?;
                 let sender = next_account_info(account_info_iter)?;
                 let refunder = next_account_info(account_info_iter)?;
@@ -220,10 +222,11 @@ impl Processor {
 
                 Self::process_delete_sender(
                     program_id,
-                    authority,
                     reward_manager,
-                    refunder,
+                    manager_account,
+                    authority,
                     sender,
+                    refunder,
                     sys_prog,
                 )
             }
