@@ -86,6 +86,7 @@ impl Processor {
     fn process_create_sender<'a>(
         program_id: &Pubkey,
         eth_address: EthereumAddress,
+        operator: EthereumAddress,
         reward_manager_info: &AccountInfo<'a>,
         manager_account_info: &AccountInfo<'a>,
         authority_info: &AccountInfo<'a>,
@@ -133,7 +134,7 @@ impl Processor {
             &[signature],
         )?;
 
-        SenderAccount::new(*reward_manager_info.key, eth_address)
+        SenderAccount::new(*reward_manager_info.key, eth_address, operator)
             .serialize(&mut *sender_info.data.borrow_mut())?;
 
         Ok(())
@@ -207,6 +208,7 @@ impl Processor {
         rent_info: &AccountInfo<'a>,
         signers_info: Vec<&AccountInfo>,
         eth_address: EthereumAddress,
+        operator: EthereumAddress,
     ) -> ProgramResult {
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
         if !reward_manager.is_initialized() {
@@ -242,7 +244,7 @@ impl Processor {
             &[signature],
         )?;
 
-        SenderAccount::new(*reward_manager_info.key, eth_address)
+        SenderAccount::new(*reward_manager_info.key, eth_address, operator)
             .serialize(&mut *new_sender_info.data.borrow_mut())?;
 
         Ok(())
@@ -361,7 +363,7 @@ impl Processor {
                     min_votes,
                 )
             }
-            Instructions::CreateSender { eth_address } => {
+            Instructions::CreateSender { eth_address, operator } => {
                 msg!("Instruction: CreateSender");
 
                 let reward_manager = next_account_info(account_info_iter)?;
@@ -375,6 +377,7 @@ impl Processor {
                 Self::process_create_sender(
                     program_id,
                     eth_address,
+                    operator,
                     reward_manager,
                     manager_account,
                     authority,
@@ -402,7 +405,7 @@ impl Processor {
                     sys_prog,
                 )
             }
-            Instructions::AddSender { eth_address } => {
+            Instructions::AddSender { eth_address, operator } => {
                 msg!("Instruction: AddSender");
 
                 let reward_manager = next_account_info(account_info_iter)?;
@@ -423,6 +426,7 @@ impl Processor {
                     rent,
                     signers,
                     eth_address,
+                    operator,
                 )
             }
             Instructions::Transfer {

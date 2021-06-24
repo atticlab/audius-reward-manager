@@ -51,6 +51,8 @@ pub enum Instructions {
     CreateSender {
         /// Ethereum address
         eth_address: EthereumAddress,
+        /// Sender operator 
+        operator: EthereumAddress,
     },
 
     ///   Admin method removing sender
@@ -74,6 +76,8 @@ pub enum Instructions {
     AddSender {
         /// Ethereum address
         eth_address: EthereumAddress,
+        /// Sender operator 
+        operator: EthereumAddress,
     },
 
     ///   Transfer tokens to pointed receiver
@@ -135,8 +139,9 @@ pub fn create_sender(
     manager_account: &Pubkey,
     funder_account: &Pubkey,
     eth_address: EthereumAddress,
+    operator: EthereumAddress,
 ) -> Result<Instruction, ProgramError> {
-    let create_data = Instructions::CreateSender { eth_address };
+    let create_data = Instructions::CreateSender { eth_address, operator};
     let data = create_data.try_to_vec()?;
 
     let pair = get_address_pair(
@@ -199,12 +204,13 @@ pub fn add_sender<I>(
     reward_manager: &Pubkey,
     funder: &Pubkey,
     eth_address: EthereumAddress,
+    operator: EthereumAddress,
     signers: I,
 ) -> Result<Instruction, ProgramError>
 where
     I: IntoIterator<Item = Pubkey>,
 {
-    let data = Instructions::AddSender { eth_address }.try_to_vec()?;
+    let data = Instructions::AddSender { eth_address, operator }.try_to_vec()?;
 
     let pair = get_address_pair(
         program_id,

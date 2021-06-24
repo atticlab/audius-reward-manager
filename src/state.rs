@@ -52,6 +52,8 @@ pub struct SenderAccount {
     pub reward_manager: Pubkey,
     /// Ethereum address
     pub eth_address: EthereumAddress,
+    /// Sender operator 
+    pub operator: EthereumAddress,
 }
 
 impl SenderAccount {
@@ -59,11 +61,12 @@ impl SenderAccount {
     pub const LEN: usize = 53;
 
     /// Creates new `SenderAccount`
-    pub fn new(reward_manager: Pubkey, eth_address: EthereumAddress) -> Self {
+    pub fn new(reward_manager: Pubkey, eth_address: EthereumAddress, operator: EthereumAddress) -> Self {
         Self {
             version: PROGRAM_VERSION,
             reward_manager,
             eth_address,
+            operator,
         }
     }
 }
