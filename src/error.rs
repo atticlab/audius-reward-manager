@@ -6,34 +6,62 @@ use solana_program::{
     decode_error::DecodeError,
     msg,
     program_error::{PrintProgramError, ProgramError},
+    sanitize::SanitizeError,
 };
 use thiserror::Error;
 
 /// Errors that may be returned by the Template program.
 #[derive(Clone, Debug, Eq, Error, FromPrimitive, PartialEq)]
-pub enum ProgramTemplateError {
-    /// Example error
-    #[error("Example error")]
-    ExampleError,
+pub enum AudiusProgramError {
+    /// Wrong reward manager key
+    #[error("Wrong reward manager key")]
+    WrongRewardManagerKey,
+
+    /// Wrong recipient Solana key
+    #[error("Wrong recipient Solana key")]
+    WrongRecipientKey,
+
+    /// Isn't enough senders keys
+    #[error("Isn't enough senders keys")]
+    NotEnoughSenders,
+
+    /// Secp256 instruction missing
+    #[error("Secp256 instruction missing")]
+    Secp256InstructionMissing,
+
+    /// Instruction load error
+    #[error("Instruction load error")]
+    InstructionLoadError,
+
+    /// Repeated senders
+    #[error("Repeated sender")]
+    RepeatedSenders,
+
+    /// Signature verification failed
+    #[error("Signature verification failed")]
+    SignatureVerificationFailed,
 }
-impl From<ProgramTemplateError> for ProgramError {
-    fn from(e: ProgramTemplateError) -> Self {
+impl From<AudiusProgramError> for ProgramError {
+    fn from(e: AudiusProgramError) -> Self {
         ProgramError::Custom(e as u32)
     }
 }
-impl<T> DecodeError<T> for ProgramTemplateError {
+impl<T> DecodeError<T> for AudiusProgramError {
     fn type_of() -> &'static str {
-        "ProgramTemplateError"
+        "AudiusProgramError"
     }
 }
 
-impl PrintProgramError for ProgramTemplateError {
+impl PrintProgramError for AudiusProgramError {
     fn print<E>(&self)
     where
         E: 'static + std::error::Error + DecodeError<E> + PrintProgramError + FromPrimitive,
     {
-        match self {
-            ProgramTemplateError::ExampleError => msg!("Example error message"),
-        }
+        msg!(&self.to_string())
     }
+}
+
+/// Convert SanitizeError to AudiusProgramError
+pub fn to_audius_program_error(_e: SanitizeError) -> AudiusProgramError {
+    AudiusProgramError::InstructionLoadError
 }
