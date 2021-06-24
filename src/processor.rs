@@ -1,15 +1,15 @@
 //! Program state processor
 
 use crate::{
-    error::AudiusRewardError,
-    instruction::Instructions,
+    error::AudiusProgramError,
+    instruction::{Instructions, Transfer},
     state::{RewardManager, SenderAccount},
-    utils::{get_address_pair, get_base_address},
+    utils::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::next_account_info,
     account_info::AccountInfo,
+    account_info::{next_account_info, next_account_infos},
     entrypoint::ProgramResult,
     msg,
     program::{invoke, invoke_signed},
@@ -17,9 +17,14 @@ use solana_program::{
     program_pack::IsInitialized,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction,
+    system_instruction, sysvar,
     sysvar::Sysvar,
 };
+
+/// Sender program account seed
+pub const SENDER_SEED_PREFIX: &'static str = "S_";
+/// Transfer program account seed
+pub const TRANSFER_SEED_PREFIX: &'static str = "T_";
 
 /// Program state handler.
 pub struct Processor;
@@ -41,7 +46,7 @@ impl Processor {
         token_account_info: &AccountInfo<'a>,
         mint_info: &AccountInfo<'a>,
         manager_info: &AccountInfo<'a>,
-        athority_info: &AccountInfo<'a>,
+        authority_info: &AccountInfo<'a>,
         spl_token_info: &AccountInfo<'a>,
         rent: &AccountInfo<'a>,
         min_votes: u8,
@@ -51,8 +56,8 @@ impl Processor {
             return Err(ProgramError::AccountAlreadyInitialized);
         }
 
-        let (base, _) = get_base_address(reward_manager_info.key, program_id);
-        if base != *athority_info.key {
+        let (base, _) = get_base_address(program_id, reward_manager_info.key);
+        if base != *authority_info.key {
             return Err(ProgramError::InvalidAccountData);
         }
 
@@ -67,7 +72,7 @@ impl Processor {
                 spl_token_info.clone(),
                 token_account_info.clone(),
                 mint_info.clone(),
-                athority_info.clone(),
+                authority_info.clone(),
                 rent.clone(),
             ],
         )?;
@@ -95,12 +100,15 @@ impl Processor {
         }
 
         if reward_manager.manager != *manager_account_info.key {
-            return Err(AudiusRewardError::IncorectManagerAccount.into());
+            return Err(AudiusProgramError::IncorectManagerAccount.into());
         }
 
-        let pair = get_address_pair(program_id, reward_manager_info.key, eth_address)?;
+        let mut seed = Vec::new();
+        seed.extend_from_slice(&eth_address.as_ref());
+        seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
+        let pair = get_address_pair(program_id, reward_manager_info.key, seed.as_ref())?;
         if *sender_info.key != pair.derive.address {
-            return Err(AudiusRewardError::IncorectSenderAccount.into());
+            return Err(AudiusProgramError::IncorectSenderAccount.into());
         }
 
         let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
@@ -140,12 +148,12 @@ impl Processor {
     ) -> ProgramResult {
         let sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
         if sender.reward_manager != *reward_manager_info.key {
-            return Err(AudiusRewardError::IncorectRewardManager.into());
+            return Err(AudiusProgramError::WrongRewardManagerKey.into());
         }
 
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
         if reward_manager.manager != *manager_account_info.key {
-            return Err(AudiusRewardError::IncorectManagerAccount.into());
+            return Err(AudiusProgramError::IncorectManagerAccount.into());
         }
 
         Self::transfer_all(sender_info, refunder_account_info)?;
@@ -259,6 +267,103 @@ impl Processor {
         Ok(())
     }
 
+    fn process_transfer<'a>(
+        program_id: &Pubkey,
+        reward_manager: &AccountInfo<'a>,
+        reward_manager_authority: &AccountInfo<'a>,
+        recipient: &AccountInfo<'a>,
+        vault_token_account: &AccountInfo<'a>,
+        bot_oracle: &AccountInfo<'a>,
+        funder: &AccountInfo<'a>,
+        transfer_acc_to_create: &AccountInfo<'a>,
+        instruction_info: &AccountInfo<'a>,
+        transfer_data: Transfer,
+        senders: Vec<AccountInfo<'a>>,
+    ) -> ProgramResult {
+        let reward_manager_data = RewardManager::try_from_slice(&reward_manager.data.borrow())?;
+        if !reward_manager_data.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+
+        let bot_oracle_data = SenderAccount::try_from_slice(&bot_oracle.data.borrow())?;
+        if !bot_oracle_data.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+
+        let mut seed = Vec::new();
+        seed.extend_from_slice(&bot_oracle_data.eth_address.as_ref());
+        seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
+        let generated_bot_oracle_key =
+            get_address_pair(program_id, reward_manager.key, seed.as_ref())?;
+        if generated_bot_oracle_key.derive.address != *bot_oracle.key {
+            return Err(ProgramError::InvalidSeeds);
+        }
+
+        let mut seed = Vec::new();
+        seed.extend_from_slice(TRANSFER_SEED_PREFIX.as_ref());
+        seed.extend_from_slice(transfer_data.id.as_ref());
+        let generated_transfer_acc_to_create =
+            get_address_pair(program_id, reward_manager.key, seed.as_ref())?;
+        if generated_transfer_acc_to_create.derive.address != *transfer_acc_to_create.key {
+            return Err(ProgramError::InvalidSeeds);
+        }
+
+        let mut seed = Vec::new();
+        seed.extend_from_slice(&transfer_data.eth_recipient.as_ref());
+        let generated_recipient_key =
+            get_address_pair(program_id, reward_manager.key, seed.as_ref())?;
+        if generated_recipient_key.derive.address != *recipient.key {
+            return Err(AudiusProgramError::WrongRecipientKey.into());
+        }
+
+        if (senders.len() as u8) < reward_manager_data.min_votes {
+            return Err(AudiusProgramError::NotEnoughSenders.into());
+        }
+
+        let instruction_index =
+            sysvar::instructions::load_current_index(&instruction_info.data.borrow());
+        if instruction_index == 0 {
+            return Err(AudiusProgramError::Secp256InstructionMissing.into());
+        }
+
+        let secp_instructions =
+            get_secp_instructions(instruction_index, senders.len(), instruction_info)?;
+
+        let senders_eth_addresses = get_eth_addresses(program_id, reward_manager.key, senders)?;
+
+        verify_secp_instructions(
+            bot_oracle_data.eth_address,
+            senders_eth_addresses,
+            secp_instructions,
+            transfer_data.clone(),
+        )?;
+
+        token_transfer(
+            program_id,
+            reward_manager.key,
+            vault_token_account,
+            recipient,
+            reward_manager_authority,
+            transfer_data.amount,
+        )?;
+
+        let mut seed = Vec::new();
+        seed.extend_from_slice(TRANSFER_SEED_PREFIX.as_ref());
+        seed.extend_from_slice(transfer_data.id.as_ref());
+
+        create_account_with_seed(
+            program_id,
+            funder,
+            transfer_acc_to_create,
+            reward_manager_authority,
+            reward_manager.key,
+            seed.as_ref(),
+            1,
+            0,
+            program_id,
+        )
+    }
+
     /// Processes an instruction
     pub fn process_instruction(
         program_id: &Pubkey,
@@ -275,7 +380,7 @@ impl Processor {
                 let token_account = next_account_info(account_info_iter)?;
                 let mint = next_account_info(account_info_iter)?;
                 let manager = next_account_info(account_info_iter)?;
-                let athority = next_account_info(account_info_iter)?;
+                let authority = next_account_info(account_info_iter)?;
                 let _spl_token = next_account_info(account_info_iter)?;
                 let rent = next_account_info(account_info_iter)?;
 
@@ -285,7 +390,7 @@ impl Processor {
                     token_account,
                     mint,
                     manager,
-                    athority,
+                    authority,
                     _spl_token,
                     rent,
                     min_votes,
@@ -353,6 +458,44 @@ impl Processor {
                     rent,
                     signers,
                     eth_address,
+                )
+            }
+            Instructions::Transfer {
+                amount,
+                id,
+                eth_recipient,
+            } => {
+                msg!("Instruction: Transfer");
+
+                let reward_manager = next_account_info(account_info_iter)?;
+                let reward_manager_authority = next_account_info(account_info_iter)?;
+                let recipient = next_account_info(account_info_iter)?;
+                let vault_token_account = next_account_info(account_info_iter)?;
+                let bot_oracle = next_account_info(account_info_iter)?;
+                let funder = next_account_info(account_info_iter)?;
+                let transfer_acc_to_create = next_account_info(account_info_iter)?;
+                let instruction_info = next_account_info(account_info_iter)?;
+
+                let senders =
+                    next_account_infos(&mut account_info_iter.clone(), account_info_iter.count())?
+                        .to_vec();
+
+                Self::process_transfer(
+                    program_id,
+                    reward_manager,
+                    reward_manager_authority,
+                    recipient,
+                    vault_token_account,
+                    bot_oracle,
+                    funder,
+                    transfer_acc_to_create,
+                    instruction_info,
+                    Transfer {
+                        amount,
+                        id,
+                        eth_recipient,
+                    },
+                    senders,
                 )
             }
         }
