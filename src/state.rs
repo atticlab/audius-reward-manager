@@ -3,7 +3,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{program_pack::IsInitialized, pubkey::Pubkey};
 
-use crate::PROGRAM_VERSION;
+use crate::{PROGRAM_VERSION, utils::EthereumAddress};
 
 /// Accounts are created with data zeroed out, so uninitialized state instances
 /// will have the version set to 0.
@@ -51,7 +51,7 @@ pub struct SenderAccount {
     /// Reward manager
     pub reward_manager: Pubkey,
     /// Ethereum address
-    pub eth_address: [u8; 20],
+    pub eth_address: EthereumAddress,
 }
 
 impl SenderAccount {
@@ -59,7 +59,7 @@ impl SenderAccount {
     pub const LEN: usize = 53;
 
     /// Creates new `SenderAccount`
-    pub fn new(reward_manager: Pubkey, eth_address: [u8; 20]) -> Self {
+    pub fn new(reward_manager: Pubkey, eth_address: EthereumAddress) -> Self {
         Self {
             version: PROGRAM_VERSION,
             reward_manager,

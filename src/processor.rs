@@ -85,7 +85,7 @@ impl Processor {
 
     fn process_create_sender<'a>(
         program_id: &Pubkey,
-        eth_address: [u8; 20],
+        eth_address: EthereumAddress,
         reward_manager_info: &AccountInfo<'a>,
         manager_account_info: &AccountInfo<'a>,
         authority_info: &AccountInfo<'a>,
@@ -206,7 +206,7 @@ impl Processor {
         instructions_info: &AccountInfo<'a>,
         rent_info: &AccountInfo<'a>,
         signers_info: Vec<&AccountInfo>,
-        eth_address: [u8; 20],
+        eth_address: EthereumAddress,
     ) -> ProgramResult {
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
         if !reward_manager.is_initialized() {
@@ -220,7 +220,7 @@ impl Processor {
             reward_manager_info.key, 
             &[SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()],
         )?;
-        
+
         let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
 
         let rent = Rent::from_account_info(rent_info)?;

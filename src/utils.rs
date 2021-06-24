@@ -176,8 +176,8 @@ pub fn get_eth_addresses<'a>(
     program_id: &Pubkey,
     reward_manager_key: &Pubkey,
     senders: Vec<&AccountInfo<'a>>,
-) -> Result<Vec<[u8; 20]>, ProgramError> {
-    let mut senders_eth_addresses: Vec<[u8; 20]> = Vec::new();
+) -> Result<Vec<EthereumAddress>, ProgramError> {
+    let mut senders_eth_addresses: Vec<EthereumAddress> = Vec::new();
 
     for sender in senders {
         let sender_data = SenderAccount::try_from_slice(&sender.data.borrow())?;
@@ -202,11 +202,11 @@ pub fn get_eth_addresses<'a>(
     Ok(senders_eth_addresses)
 }
 
-pub fn get_signer_from_secp_instruction(secp_instruction_data: Vec<u8>) -> [u8; 20] {
+pub fn get_signer_from_secp_instruction(secp_instruction_data: Vec<u8>) -> EthereumAddress {
     let eth_address_offset = 12;
     let instruction_signer =
         secp_instruction_data[eth_address_offset..eth_address_offset + 20].to_vec();
-    let instruction_signer: [u8; 20] = instruction_signer.as_slice().try_into().unwrap();
+    let instruction_signer: EthereumAddress = instruction_signer.as_slice().try_into().unwrap();
     instruction_signer
 }
 
@@ -225,8 +225,8 @@ pub fn validate_eth_signature(
 }
 
 pub fn verify_secp_instructions(
-    bot_oracle_eth_address: [u8; 20],
-    senders_eth_addresses: Vec<[u8; 20]>,
+    bot_oracle: EthereumAddress,
+    senders: Vec<EthereumAddress>,
     secp_instructions: Vec<Instruction>,
     transfer_data: Transfer,
 ) -> Result<(), ProgramError> {
@@ -246,21 +246,21 @@ pub fn verify_secp_instructions(
     senders_message.extend_from_slice(b"_");
     senders_message.extend_from_slice(transfer_data.id.as_ref());
     senders_message.extend_from_slice(b"_");
-    senders_message.extend_from_slice(bot_oracle_eth_address.as_ref());
+    senders_message.extend_from_slice(bot_oracle.as_ref());
 
     for instruction in secp_instructions {
         let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
-        if eth_signer == bot_oracle_eth_address {
+        if eth_signer == bot_oracle {
             validate_eth_signature(bot_oracle_message.as_ref(), instruction.data.clone())?;
             successful_verifications += 1;
         }
-        if senders_eth_addresses.contains(&eth_signer) {
+        if senders.contains(&eth_signer) {
             validate_eth_signature(senders_message.as_ref(), instruction.data)?;
             successful_verifications += 1;
         }
     }
 
-    if successful_verifications < senders_eth_addresses.len() as u8 {
+    if successful_verifications < senders.len() as u8 {
         return Err(AudiusProgramError::SignatureVerificationFailed.into());
     }
 

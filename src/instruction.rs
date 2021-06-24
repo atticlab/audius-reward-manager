@@ -10,10 +10,7 @@ use solana_program::{
     system_program, sysvar,
 };
 
-use crate::{
-    processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX},
-    utils::{get_address_pair, get_base_address},
-};
+use crate::{processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX}, utils::{EthereumAddress, get_address_pair, get_base_address}};
 /// `Transfer` instruction parameters
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub struct Transfer {
@@ -22,7 +19,7 @@ pub struct Transfer {
     /// ID generated on backend
     pub id: String,
     /// Recipient's Eth address
-    pub eth_recipient: [u8; 20],
+    pub eth_recipient: EthereumAddress,
 }
 
 /// Instruction definition
@@ -53,7 +50,7 @@ pub enum Instructions {
     ///   6. `[]`  Rent sysvar
     CreateSender {
         /// Ethereum address
-        eth_address: [u8; 20],
+        eth_address: EthereumAddress,
     },
 
     ///   Admin method removing sender
@@ -76,7 +73,7 @@ pub enum Instructions {
     /// n. `[r]`  old_sender_n
     AddSender {
         /// Ethereum address
-        eth_address: [u8; 20],
+        eth_address: EthereumAddress,
     },
 
     ///   Transfer tokens to pointed receiver
@@ -97,7 +94,7 @@ pub enum Instructions {
         /// ID generated on backend
         id: String,
         /// Recipient's Eth address
-        eth_recipient: [u8; 20],
+        eth_recipient: EthereumAddress,
     },
 }
 
@@ -137,7 +134,7 @@ pub fn create_sender(
     reward_manager: &Pubkey,
     manager_account: &Pubkey,
     funder_account: &Pubkey,
-    eth_address: [u8; 20],
+    eth_address: EthereumAddress,
 ) -> Result<Instruction, ProgramError> {
     let create_data = Instructions::CreateSender { eth_address };
     let data = create_data.try_to_vec()?;
@@ -171,7 +168,7 @@ pub fn delete_sender(
     reward_manager: &Pubkey,
     manager_account: &Pubkey,
     refunder_account: &Pubkey,
-    eth_address: [u8; 20],
+    eth_address: EthereumAddress,
 ) -> Result<Instruction, ProgramError> {
     let delete_data = Instructions::DeleteSender;
     let data = delete_data.try_to_vec()?;
@@ -201,7 +198,7 @@ pub fn add_sender<I>(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
     funder: &Pubkey,
-    eth_address: [u8; 20],
+    eth_address: EthereumAddress,
     signers: I,
 ) -> Result<Instruction, ProgramError>
 where
