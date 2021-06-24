@@ -1,5 +1,7 @@
 //! Instruction types
 
+use std::array::IntoIter;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -43,12 +45,26 @@ pub enum Instructions {
 
     ///   Admin method removing sender
     ///  
-    ///   0. `[]` `Reward Manager`
-    ///   1. `[s]` Manager account
-    ///   2. `[]`  `Reward Manager` authority
+    ///   0. `[]`   `Reward Manager`
+    ///   1. `[s]`  Manager account
+    ///   2. `[]`   `Reward Manager` authority
     ///   3. `[w]`  Removed sender
-    ///   4. `[]`  Refunder account
+    ///   4. `[]`   Refunder account
     DeleteSender,
+
+    ///
+    ///
+    /// 0. `[r]`  reward_manager
+    /// 1. `[r]`  `Reward Manager` authority
+    /// 2. `[ws]` funder
+    /// 3. `[w]`  new_sender
+    /// 4. `[r]`  old_sender_0
+    /// ... Bunch of old senders which prove adding new one
+    /// n. `[r]`  old_sender_n
+    AddSender {
+       /// Ethereum address
+       eth_address: [u8; 20], 
+    },
 }
 
 /// Create `InitRewardManager` instruction
@@ -131,6 +147,38 @@ pub fn delete_sender(
         AccountMeta::new(*refunder_account, false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];
+
+    Ok(Instruction {
+        program_id: *program_id,
+        accounts,
+        data,
+    })
+}
+
+pub fn add_sender<I>(
+    program_id: &Pubkey,
+    reward_manager: &Pubkey,
+    funder: &Pubkey,
+    eth_address: [u8; 20],
+    signers: I,
+) -> Result<Instruction, ProgramError>
+where
+    I: IntoIterator<Item = Pubkey>
+{
+    let data = Instructions::AddSender { eth_address }.try_to_vec()?;
+
+    let pair = get_address_pair(program_id, reward_manager, eth_address)?;
+
+    let accounts = vec![
+        AccountMeta::new_readonly(*reward_manager, false),
+        AccountMeta::new_readonly(pair.base.address, false),
+        AccountMeta::new(*funder, false),
+        AccountMeta::new(pair.derive.address, false),
+        AccountMeta::new_readonly(sysvar::instructions::id(), false),
+        AccountMeta::new_readonly(sysvar::rent::id(), false),
+    ];
+    let iter = signers.into_iter().map(|i| AccountMeta::new_readonly(i, true));
+    accounts.extend(iter);
 
     Ok(Instruction {
         program_id: *program_id,
