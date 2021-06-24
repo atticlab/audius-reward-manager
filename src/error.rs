@@ -13,11 +13,11 @@ use thiserror::Error;
 /// Errors that may be returned by the Template program.
 #[derive(Clone, Debug, Eq, Error, FromPrimitive, PartialEq)]
 pub enum AudiusProgramError {
-    /// Wrong sender account 
+    /// Wrong sender account
     #[error("Incorect sender account")]
     IncorectSenderAccount,
-    
-    /// Wrong manager account 
+
+    /// Wrong manager account
     #[error("Incorect account manager")]
     IncorectManagerAccount,
 

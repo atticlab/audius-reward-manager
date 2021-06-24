@@ -104,8 +104,8 @@ impl Processor {
         }
 
         let pair = get_address_pair(
-            program_id, 
-            reward_manager_info.key, 
+            program_id,
+            reward_manager_info.key,
             &[SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()],
         )?;
         if *sender_info.key != pair.derive.address {
@@ -161,58 +161,40 @@ impl Processor {
 
         Ok(())
     }
-    /// Checks that message inside instruction was signed by expected signer
-    /// and it expected message
-    fn validate_eth_signature(
-        expected_signer: &EthereumAddress,
-        expected_message: &[u8],
-        secp_instruction_data: Vec<u8>,
-    ) -> Result<(), ProgramError> {
-        let eth_address_offset = 12;
-        let instruction_signer = secp_instruction_data
-            [eth_address_offset..eth_address_offset + size_of::<EthereumAddress>()]
-            .to_vec();
-        if instruction_signer != expected_signer {
-            return Err(ClaimableProgramError::SignatureVerificationFailed.into());
-        }
-
-        //NOTE: meta (12) + address (20) + signature (65) = 97
-        let message_data_offset = 97;
-        let instruction_message = secp_instruction_data[message_data_offset..].to_vec();
-        if instruction_message != *expected_message {
-            return Err(ClaimableProgramError::SignatureVerificationFailed.into());
-        }
-
-        Ok(())
-    }
 
     /// Checks that the user signed message with his ethereum private key
     fn check_ethereum_sign(
+        program_id: &Pubkey,
+        reward_manager_info: &AccountInfo,
         instruction_info: &AccountInfo,
-        expected_signer: &EthereumAddress,
-        expected_message: &[u8],
+        expected_signers: Vec<&AccountInfo>,
     ) -> ProgramResult {
+        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
+
+        if expected_signers.len() < reward_manager.min_votes as _ {
+            return Err(AudiusProgramError::NotEnoughSenders.into());
+        }
+
         let index = sysvar::instructions::load_current_index(&instruction_info.data.borrow());
 
         // instruction can't be first in transaction
         // because must follow after `new_secp256k1_instruction`
         if index == 0 {
-            return Err(ClaimableProgramError::Secp256InstructionLosing.into());
+            return Err(AudiusProgramError::Secp256InstructionMissing.into());
         }
 
-        // load previous instruction
-        let instruction = sysvar::instructions::load_instruction_at(
-            (index - 1) as usize,
-            &instruction_info.data.borrow(),
+        let secp_instructions =
+            get_secp_instructions(index, expected_signers.len(), instruction_info)?;
+
+        let senders_eth_addresses =
+            get_eth_addresses(program_id, reward_manager_info.key, expected_signers)?;
+
+        verify_secp_instructions(
+            bot_oracle_data.eth_address,
+            senders_eth_addresses,
+            secp_instructions,
+            transfer_data.clone(),
         )
-        .map_err(to_claimable_tokens_error)?;
-
-        // is that instruction is `new_secp256k1_instruction`
-        if instruction.program_id != secp256k1_program::id() {
-            return Err(ClaimableProgramError::Secp256InstructionLosing.into());
-        }
-
-        Self::validate_eth_signature(expected_signer, expected_message, instruction.data)
     }
 
     fn process_add_sender<'a>(
@@ -231,18 +213,16 @@ impl Processor {
             return Err(ProgramError::UninitializedAccount);
         }
 
-        if signers_info.len() < reward_manager.min_votes as _ {
-            return Err(AudiusProgramError::NotEnoughSenders.into());
-        }
+        Self::check_ethereum_sign(program_id, &reward_manager_info, instructions_info, signers_info);
 
-        // Extract previous instructions(there should be calls of Secp program)
-        // Iterate through Secp instructions and check that senders signed right messages. 
-        // Also in this loop check if senders' key are correct (generated from received manager)
-        Self::check_ethereum_sign(instructions_info, signers_info, );
-
-        let pair = get_address_pair(program_id, reward_manager_info.key, eth_address)?;
-        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
+        let pair = get_address_pair(
+            program_id, 
+            reward_manager_info.key, 
+            &[SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()],
+        )?;
         
+        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
+
         let rent = Rent::from_account_info(rent_info)?;
         invoke_signed(
             &system_instruction::create_account_with_seed(
@@ -292,49 +272,36 @@ impl Processor {
         }
 
         let generated_bot_oracle_key = get_address_pair(
-            program_id, 
-            reward_manager.key, 
-            &[SENDER_SEED_PREFIX.as_ref(), bot_oracle_data.eth_address.as_ref()],
+            program_id,
+            reward_manager.key,
+            &[
+                SENDER_SEED_PREFIX.as_ref(),
+                bot_oracle_data.eth_address.as_ref(),
+            ],
         )?;
         if generated_bot_oracle_key.derive.address != *bot_oracle.key {
             return Err(ProgramError::InvalidSeeds);
         }
 
         let generated_transfer_acc_to_create = get_address_pair(
-            program_id, 
-            reward_manager.key, 
+            program_id,
+            reward_manager.key,
             &[TRANSFER_SEED_PREFIX.as_ref(), transfer_data.id.as_ref()],
         )?;
         if generated_transfer_acc_to_create.derive.address != *transfer_acc_to_create.key {
             return Err(ProgramError::InvalidSeeds);
         }
 
-        let generated_recipient_key = get_address_pair(program_id, reward_manager.key, &[transfer_data.eth_recipient.as_ref()])?;
+        let generated_recipient_key = get_address_pair(
+            program_id,
+            reward_manager.key,
+            &[transfer_data.eth_recipient.as_ref()],
+        )?;
         if generated_recipient_key.derive.address != *recipient.key {
             return Err(AudiusProgramError::WrongRecipientKey.into());
         }
 
-        if (senders.len() as u8) < reward_manager_data.min_votes {
-            return Err(AudiusProgramError::NotEnoughSenders.into());
-        }
-
-        let instruction_index =
-            sysvar::instructions::load_current_index(&instruction_info.data.borrow());
-        if instruction_index == 0 {
-            return Err(AudiusProgramError::Secp256InstructionMissing.into());
-        }
-
-        let secp_instructions =
-            get_secp_instructions(instruction_index, senders.len(), instruction_info)?;
-
-        let senders_eth_addresses = get_eth_addresses(program_id, reward_manager.key, senders)?;
-
-        verify_secp_instructions(
-            bot_oracle_data.eth_address,
-            senders_eth_addresses,
-            secp_instructions,
-            transfer_data.clone(),
-        )?;
+        Self::check_ethereum_sign(program_id, &reward_manager_data, instruction_info, senders);
 
         token_transfer(
             program_id,

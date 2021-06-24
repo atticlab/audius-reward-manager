@@ -75,8 +75,8 @@ pub enum Instructions {
     /// ... Bunch of old senders which prove adding new one
     /// n. `[r]`  old_sender_n
     AddSender {
-       /// Ethereum address
-       eth_address: [u8; 20], 
+        /// Ethereum address
+        eth_address: [u8; 20],
     },
 
     ///   Transfer tokens to pointed receiver
@@ -143,9 +143,9 @@ pub fn create_sender(
     let data = create_data.try_to_vec()?;
 
     let pair = get_address_pair(
-        program_id, 
-        reward_manager, 
-        &[SENDER_SEED_PREFIX.as_ref(), &eth_address.as_ref()]
+        program_id,
+        reward_manager,
+        &[SENDER_SEED_PREFIX.as_ref(), &eth_address.as_ref()],
     )?;
 
     let accounts = vec![
@@ -177,9 +177,9 @@ pub fn delete_sender(
     let data = delete_data.try_to_vec()?;
 
     let pair = get_address_pair(
-        program_id, 
-        reward_manager, 
-        &[SENDER_SEED_PREFIX.as_ref(), &eth_address.as_ref()]
+        program_id,
+        reward_manager,
+        &[SENDER_SEED_PREFIX.as_ref(), &eth_address.as_ref()],
     )?;
 
     let accounts = vec![
@@ -205,14 +205,14 @@ pub fn add_sender<I>(
     signers: I,
 ) -> Result<Instruction, ProgramError>
 where
-    I: IntoIterator<Item = Pubkey>
+    I: IntoIterator<Item = Pubkey>,
 {
     let data = Instructions::AddSender { eth_address }.try_to_vec()?;
 
     let pair = get_address_pair(
-        program_id, 
-        reward_manager, 
-        &[SENDER_SEED_PREFIX.as_ref(), &eth_address.as_ref()]
+        program_id,
+        reward_manager,
+        &[SENDER_SEED_PREFIX.as_ref(), &eth_address.as_ref()],
     )?;
 
     let accounts = vec![
@@ -223,7 +223,9 @@ where
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
     ];
-    let iter = signers.into_iter().map(|i| AccountMeta::new_readonly(i, true));
+    let iter = signers
+        .into_iter()
+        .map(|i| AccountMeta::new_readonly(i, true));
     accounts.extend(iter);
 
     Ok(Instruction {
@@ -243,15 +245,15 @@ pub fn transfer<I>(
     funder: &Pubkey,
     senders: I,
     params: Transfer,
-) -> Result<Instruction, ProgramError> 
+) -> Result<Instruction, ProgramError>
 where
-    I: IntoIterator<Item = Pubkey>
+    I: IntoIterator<Item = Pubkey>,
 {
-    let recipient = Pubkey::find_program_address(
+    let (recipient, _) = Pubkey::find_program_address(
         &[reward_manager.as_ref(), params.eth_recipient.as_ref()],
         program_id,
-    )
-    .0;
+    );
+
     let data = Instructions::Transfer {
         amount: params.amount,
         id: params.id.clone(),
@@ -260,9 +262,9 @@ where
     .try_to_vec()?;
 
     let transfer_acc_to_create = get_address_pair(
-        program_id, 
-        reward_manager, 
-        &[SENDER_SEED_PREFIX.as_ref(), &params.id.as_ref()]
+        program_id,
+        reward_manager,
+        &[SENDER_SEED_PREFIX.as_ref(), &params.id.as_ref()],
     )?;
 
     let mut accounts = vec![
@@ -275,7 +277,9 @@ where
         AccountMeta::new(transfer_acc_to_create.derive.address, false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
     ];
-    let iter = senders.into_iter().map(|i| AccountMeta::new_readonly(i, true));
+    let iter = senders
+        .into_iter()
+        .map(|i| AccountMeta::new_readonly(i, true));
     accounts.extend(iter);
 
     Ok(Instruction {

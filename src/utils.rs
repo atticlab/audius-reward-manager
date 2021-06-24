@@ -175,7 +175,7 @@ pub fn get_secp_instructions<'a>(
 pub fn get_eth_addresses<'a>(
     program_id: &Pubkey,
     reward_manager_key: &Pubkey,
-    senders: Vec<AccountInfo<'a>>,
+    senders: Vec<&AccountInfo<'a>>,
 ) -> Result<Vec<[u8; 20]>, ProgramError> {
     let mut senders_eth_addresses: Vec<[u8; 20]> = Vec::new();
 
@@ -184,11 +184,12 @@ pub fn get_eth_addresses<'a>(
         if !sender_data.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
         }
-        let mut seed = Vec::new();
-        seed.extend_from_slice(&sender_data.eth_address.as_ref());
-        seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
-        
-        let generated_sender_key = get_address_pair(program_id, reward_manager_key, seed.as_ref())?;
+  
+        let generated_sender_key = get_address_pair(
+            program_id, 
+            reward_manager_key, 
+            &[SENDER_SEED_PREFIX.as_ref(), sender_data.eth_address.as_ref()],
+        )?;
         if generated_sender_key.derive.address != *sender.key {
             return Err(ProgramError::InvalidSeeds);
         }
