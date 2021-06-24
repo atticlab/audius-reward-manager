@@ -2,6 +2,7 @@
 mod utils;
 use audius_reward_manager::{
     instruction,
+    processor::SENDER_SEED_PREFIX,
     state::{RewardManager, SenderAccount},
     utils::get_address_pair,
 };
@@ -21,8 +22,11 @@ async fn success() {
     let refunder_account = Pubkey::new_unique();
     let eth_address = [0u8; 20];
 
+    let mut seed = Vec::new();
+    seed.extend_from_slice(&eth_address.as_ref());
+    seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
     let pair =
-        get_address_pair(&audius_reward_manager::id(), &reward_manager, eth_address).unwrap();
+        get_address_pair(&audius_reward_manager::id(), &reward_manager, seed.as_ref()).unwrap();
 
     let reward_manager_data = RewardManager::new(token_account, manager_account.pubkey(), 3);
     program_test.add_account(
