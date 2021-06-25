@@ -48,6 +48,10 @@ pub enum AudiusProgramError {
     /// Signature verification failed
     #[error("Signature verification failed")]
     SignatureVerificationFailed,
+
+    /// Some signers have same operators
+    #[error("Some signers have same operators")]
+    OperatorCollision,
 }
 impl From<AudiusProgramError> for ProgramError {
     fn from(e: AudiusProgramError) -> Self {

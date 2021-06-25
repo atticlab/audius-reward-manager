@@ -47,13 +47,9 @@ pub fn get_address_pair(
     reward_manager: &Pubkey,
     seeds: &[&[u8]],
 ) -> Result<AddressPair, PubkeyError> {
-    let mut composed = Vec::new();
-    for seed in seeds {
-        composed.extend_from_slice(seed);
-    }
-
     let (base_pk, base_seed) = get_base_address(program_id, reward_manager);
-    let (derived_pk, derive_seed) = get_derived_address(program_id, &base_pk.clone(), composed)?;
+    let (derived_pk, derive_seed) =
+        get_derived_address(program_id, &base_pk.clone(), seeds.concat().as_ref())?;
     Ok(AddressPair {
         base: Base {
             address: base_pk,
@@ -121,7 +117,7 @@ pub fn create_account_with_seed<'a>(
     account_to_create: &AccountInfo<'a>,
     base: &AccountInfo<'a>,
     reward_manager: &Pubkey,
-    seed: &[u8],
+    seeds: &[&[u8]],
     required_lamports: u64,
     space: u64,
     owner: &Pubkey,
@@ -134,7 +130,7 @@ pub fn create_account_with_seed<'a>(
             &funder.key,
             &account_to_create.key,
             &base.key,
-            &bs58::encode(seed).into_string(),
+            &bs58::encode(seeds.concat()).into_string(),
             required_lamports,
             space,
             owner,
@@ -158,9 +154,7 @@ pub fn get_secp_instructions<'a>(
         )
         .map_err(to_audius_program_error)?;
 
-        if instruction.program_id == secp256k1_program::id()
-            && !secp_instructions.contains(&instruction)
-        {
+        if instruction.program_id == secp256k1_program::id() {
             secp_instructions.push(instruction);
         }
     }
@@ -184,11 +178,14 @@ pub fn get_eth_addresses<'a>(
         if !sender_data.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
         }
-  
+
         let generated_sender_key = get_address_pair(
-            program_id, 
-            reward_manager_key, 
-            &[SENDER_SEED_PREFIX.as_ref(), sender_data.eth_address.as_ref()],
+            program_id,
+            reward_manager_key,
+            &[
+                SENDER_SEED_PREFIX.as_ref(),
+                sender_data.eth_address.as_ref(),
+            ],
         )?;
         if generated_sender_key.derive.address != *sender.key {
             return Err(ProgramError::InvalidSeeds);
@@ -224,45 +221,65 @@ pub fn validate_eth_signature(
     Ok(())
 }
 
-pub fn verify_secp_instructions(
+pub trait VerifierFn = FnOnce(Vec<Instruction>, Vec<EthereumAddress>) -> ProgramResult;
+
+pub fn build_verify_secp_transfer(
     bot_oracle: EthereumAddress,
-    senders: Vec<EthereumAddress>,
-    secp_instructions: Vec<Instruction>,
     transfer_data: Transfer,
-) -> Result<(), ProgramError> {
-    let mut successful_verifications = 0;
+) -> impl VerifierFn {
+    return Box::new(
+        move |instructions: Vec<Instruction>, signers: Vec<EthereumAddress>| {
+            let mut successful_verifications = 0;
 
-    let mut bot_oracle_message = Vec::new();
-    bot_oracle_message.extend_from_slice(transfer_data.eth_recipient.as_ref());
-    bot_oracle_message.extend_from_slice(b"_");
-    bot_oracle_message.extend_from_slice(transfer_data.amount.to_le_bytes().as_ref());
-    bot_oracle_message.extend_from_slice(b"_");
-    bot_oracle_message.extend_from_slice(transfer_data.id.as_ref());
+            let mut bot_oracle_message = Vec::new();
+            bot_oracle_message.extend_from_slice(transfer_data.eth_recipient.as_ref());
+            bot_oracle_message.extend_from_slice(b"_");
+            bot_oracle_message.extend_from_slice(transfer_data.amount.to_le_bytes().as_ref());
+            bot_oracle_message.extend_from_slice(b"_");
+            bot_oracle_message.extend_from_slice(transfer_data.id.as_ref());
 
-    let mut senders_message = Vec::new();
-    senders_message.extend_from_slice(transfer_data.eth_recipient.as_ref());
-    senders_message.extend_from_slice(b"_");
-    senders_message.extend_from_slice(transfer_data.amount.to_le_bytes().as_ref());
-    senders_message.extend_from_slice(b"_");
-    senders_message.extend_from_slice(transfer_data.id.as_ref());
-    senders_message.extend_from_slice(b"_");
-    senders_message.extend_from_slice(bot_oracle.as_ref());
+            let mut senders_message = Vec::new();
+            senders_message.extend_from_slice(transfer_data.eth_recipient.as_ref());
+            senders_message.extend_from_slice(b"_");
+            senders_message.extend_from_slice(transfer_data.amount.to_le_bytes().as_ref());
+            senders_message.extend_from_slice(b"_");
+            senders_message.extend_from_slice(transfer_data.id.as_ref());
+            senders_message.extend_from_slice(b"_");
+            senders_message.extend_from_slice(bot_oracle.as_ref());
 
-    for instruction in secp_instructions {
-        let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
-        if eth_signer == bot_oracle {
-            validate_eth_signature(bot_oracle_message.as_ref(), instruction.data.clone())?;
-            successful_verifications += 1;
-        }
-        if senders.contains(&eth_signer) {
-            validate_eth_signature(senders_message.as_ref(), instruction.data)?;
-            successful_verifications += 1;
-        }
-    }
+            for instruction in instructions {
+                let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
+                if eth_signer == bot_oracle {
+                    validate_eth_signature(bot_oracle_message.as_ref(), instruction.data.clone())?;
+                    successful_verifications += 1;
+                }
+                if signers.contains(&eth_signer) {
+                    validate_eth_signature(senders_message.as_ref(), instruction.data)?;
+                    successful_verifications += 1;
+                }
+            }
 
-    if successful_verifications < senders.len() as u8 {
-        return Err(AudiusProgramError::SignatureVerificationFailed.into());
-    }
+            if successful_verifications != signers.len() as u8 {
+                return Err(AudiusProgramError::SignatureVerificationFailed.into());
+            }
 
-    Ok(())
+            Ok(())
+        },
+    );
+}
+
+pub fn build_verify_secp_add_sender(
+    reward_manager_key: Pubkey,
+    new_sender: EthereumAddress,
+) -> impl VerifierFn {
+    return Box::new(
+        move |instructions: Vec<Instruction>, signers: Vec<EthereumAddress>| {
+            let expected_message = [reward_manager_key.as_ref(), new_sender.as_ref()].concat();
+            for instruction in instructions {
+                validate_eth_signature(expected_message.as_ref(), instruction.data)?;
+            }
+
+            Ok(())
+        },
+    );
 }

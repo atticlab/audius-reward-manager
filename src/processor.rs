@@ -8,9 +8,10 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
+    account_info::next_account_info,
     account_info::AccountInfo,
-    account_info::{next_account_info, next_account_infos},
     entrypoint::ProgramResult,
+    instruction::Instruction,
     msg,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
@@ -20,6 +21,7 @@ use solana_program::{
     system_instruction, sysvar,
     sysvar::Sysvar,
 };
+use std::collections::hash_set::HashSet;
 
 /// Sender program account seed
 pub const SENDER_SEED_PREFIX: &'static str = "S_";
@@ -164,20 +166,28 @@ impl Processor {
     }
 
     /// Checks that the user signed message with his ethereum private key
-    fn check_ethereum_sign(
+    fn check_secp_signs(
         program_id: &Pubkey,
         reward_manager_info: &AccountInfo,
         instruction_info: &AccountInfo,
         expected_signers: Vec<&AccountInfo>,
+        verifier: impl FnOnce(Vec<Instruction>, Vec<EthereumAddress>) -> ProgramResult,
     ) -> ProgramResult {
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-
         if expected_signers.len() < reward_manager.min_votes as _ {
             return Err(AudiusProgramError::NotEnoughSenders.into());
         }
 
-        let index = sysvar::instructions::load_current_index(&instruction_info.data.borrow());
+        // Checks that all operator unique
+        let mut signers_data = HashSet::<EthereumAddress>::new();
+        for signer in &expected_signers {
+            let s = SenderAccount::try_from_slice(&signer.data.borrow())?;
+            if !signers_data.insert(s.operator) {
+                return Err(AudiusProgramError::OperatorCollision.into());
+            }
+        }
 
+        let index = sysvar::instructions::load_current_index(&instruction_info.data.borrow());
         // instruction can't be first in transaction
         // because must follow after `new_secp256k1_instruction`
         if index == 0 {
@@ -190,12 +200,7 @@ impl Processor {
         let senders_eth_addresses =
             get_eth_addresses(program_id, reward_manager_info.key, expected_signers)?;
 
-        verify_secp_instructions(
-            bot_oracle_data.eth_address,
-            senders_eth_addresses,
-            secp_instructions,
-            transfer_data.clone(),
-        )
+        verifier(secp_instructions, senders_eth_addresses)
     }
 
     fn process_add_sender<'a>(
@@ -215,11 +220,18 @@ impl Processor {
             return Err(ProgramError::UninitializedAccount);
         }
 
-        Self::check_ethereum_sign(program_id, &reward_manager_info, instructions_info, signers_info);
+        let verifier = build_verify_secp_add_sender(reward_manager_info.key.clone(), eth_address);
+        Self::check_secp_signs(
+            program_id,
+            &reward_manager_info,
+            instructions_info,
+            signers_info,
+            verifier,
+        )?;
 
         let pair = get_address_pair(
-            program_id, 
-            reward_manager_info.key, 
+            program_id,
+            reward_manager_info.key,
             &[SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()],
         )?;
 
@@ -261,7 +273,7 @@ impl Processor {
         transfer_acc_to_create: &AccountInfo<'a>,
         instruction_info: &AccountInfo<'a>,
         transfer_data: Transfer,
-        senders: Vec<AccountInfo<'a>>,
+        senders: Vec<&AccountInfo<'a>>,
     ) -> ProgramResult {
         let reward_manager_data = RewardManager::try_from_slice(&reward_manager.data.borrow())?;
         if !reward_manager_data.is_initialized() {
@@ -303,7 +315,15 @@ impl Processor {
             return Err(AudiusProgramError::WrongRecipientKey.into());
         }
 
-        Self::check_ethereum_sign(program_id, &reward_manager_data, instruction_info, senders);
+        let verifier =
+            build_verify_secp_transfer(bot_oracle_data.eth_address, transfer_data.clone());
+        Self::check_secp_signs(
+            program_id,
+            reward_manager,
+            instruction_info,
+            senders,
+            verifier,
+        )?;
 
         token_transfer(
             program_id,
@@ -314,17 +334,13 @@ impl Processor {
             transfer_data.amount,
         )?;
 
-        let mut seed = Vec::new();
-        seed.extend_from_slice(TRANSFER_SEED_PREFIX.as_ref());
-        seed.extend_from_slice(transfer_data.id.as_ref());
-
         create_account_with_seed(
             program_id,
             funder,
             transfer_acc_to_create,
             reward_manager_authority,
             reward_manager.key,
-            seed.as_ref(),
+            &[TRANSFER_SEED_PREFIX.as_ref(), transfer_data.id.as_ref()],
             1,
             0,
             program_id,
@@ -363,7 +379,10 @@ impl Processor {
                     min_votes,
                 )
             }
-            Instructions::CreateSender { eth_address, operator } => {
+            Instructions::CreateSender {
+                eth_address,
+                operator,
+            } => {
                 msg!("Instruction: CreateSender");
 
                 let reward_manager = next_account_info(account_info_iter)?;
@@ -405,7 +424,10 @@ impl Processor {
                     sys_prog,
                 )
             }
-            Instructions::AddSender { eth_address, operator } => {
+            Instructions::AddSender {
+                eth_address,
+                operator,
+            } => {
                 msg!("Instruction: AddSender");
 
                 let reward_manager = next_account_info(account_info_iter)?;
@@ -444,10 +466,7 @@ impl Processor {
                 let funder = next_account_info(account_info_iter)?;
                 let transfer_acc_to_create = next_account_info(account_info_iter)?;
                 let instruction_info = next_account_info(account_info_iter)?;
-
-                let senders =
-                    next_account_infos(&mut account_info_iter.clone(), account_info_iter.count())?
-                        .to_vec();
+                let signers = account_info_iter.collect::<Vec<&AccountInfo>>();
 
                 Self::process_transfer(
                     program_id,
@@ -464,7 +483,7 @@ impl Processor {
                         id,
                         eth_recipient,
                     },
-                    senders,
+                    signers,
                 )
             }
         }

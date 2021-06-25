@@ -10,7 +10,10 @@ use solana_program::{
     system_program, sysvar,
 };
 
-use crate::{processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX}, utils::{EthereumAddress, get_address_pair, get_base_address}};
+use crate::{
+    processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX},
+    utils::{get_address_pair, get_base_address, EthereumAddress},
+};
 /// `Transfer` instruction parameters
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub struct Transfer {
@@ -51,7 +54,7 @@ pub enum Instructions {
     CreateSender {
         /// Ethereum address
         eth_address: EthereumAddress,
-        /// Sender operator 
+        /// Sender operator
         operator: EthereumAddress,
     },
 
@@ -76,7 +79,7 @@ pub enum Instructions {
     AddSender {
         /// Ethereum address
         eth_address: EthereumAddress,
-        /// Sender operator 
+        /// Sender operator
         operator: EthereumAddress,
     },
 
@@ -141,7 +144,10 @@ pub fn create_sender(
     eth_address: EthereumAddress,
     operator: EthereumAddress,
 ) -> Result<Instruction, ProgramError> {
-    let create_data = Instructions::CreateSender { eth_address, operator};
+    let create_data = Instructions::CreateSender {
+        eth_address,
+        operator,
+    };
     let data = create_data.try_to_vec()?;
 
     let pair = get_address_pair(
@@ -199,6 +205,7 @@ pub fn delete_sender(
     })
 }
 
+/// Create `AddSender` instruction
 pub fn add_sender<I>(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
@@ -210,7 +217,11 @@ pub fn add_sender<I>(
 where
     I: IntoIterator<Item = Pubkey>,
 {
-    let data = Instructions::AddSender { eth_address, operator }.try_to_vec()?;
+    let data = Instructions::AddSender {
+        eth_address,
+        operator,
+    }
+    .try_to_vec()?;
 
     let pair = get_address_pair(
         program_id,
@@ -218,7 +229,7 @@ where
         &[SENDER_SEED_PREFIX.as_ref(), &eth_address.as_ref()],
     )?;
 
-    let accounts = vec![
+    let mut accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(pair.base.address, false),
         AccountMeta::new(*funder, false),
