@@ -4,9 +4,10 @@ use audius_reward_manager::{
     instruction,
     processor::SENDER_SEED_PREFIX,
     state::{RewardManager, SenderAccount},
-    utils::get_address_pair,
+    utils::{EthereumAddress, get_address_pair},
 };
 use borsh::BorshSerialize;
+use rand::{thread_rng, Rng};
 use solana_program::pubkey::Pubkey;
 use solana_program_test::*;
 use solana_sdk::{account::Account, signature::Keypair, signer::Signer, transaction::Transaction};
@@ -15,13 +16,14 @@ use utils::program_test;
 #[tokio::test]
 async fn success() {
     let mut program_test = program_test();
-
+    let mut rng = thread_rng();
+    
     let token_account = Pubkey::new_unique();
     let reward_manager = Pubkey::new_unique();
     let manager_account = Keypair::new();
     let refunder_account = Pubkey::new_unique();
-    let eth_address = [0u8; 20];
-    let operator = [0u8; 20];
+    let eth_address: EthereumAddress = rng.gen();
+    let operator: EthereumAddress = rng.gen();
 
     let pair = get_address_pair(
         &audius_reward_manager::id(),
