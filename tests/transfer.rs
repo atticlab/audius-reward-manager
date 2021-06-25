@@ -1,28 +1,22 @@
 #![cfg(feature = "test-bpf")]
 mod utils;
-use audius_reward_manager::{
-    instruction,
-    processor::SENDER_SEED_PREFIX,
-    state::{RewardManager, SenderAccount},
-    utils::get_address_pair,
+use audius_reward_manager::{instruction, processor::SENDER_SEED_PREFIX, utils::get_address_pair};
+use rand::{thread_rng, Rng};
+use secp256k1::{PublicKey, SecretKey};
+use sha3::Digest;
+use solana_program::{
+    instruction::Instruction, program_pack::Pack, pubkey::Pubkey, rent::Rent, system_instruction,
 };
-use borsh::BorshSerialize;
-use solana_program::{program_pack::Pack, pubkey::Pubkey, rent::Rent, system_instruction, instruction::Instruction,};
 use solana_program_test::*;
 use solana_sdk::{
-    account::Account, signature::Keypair, signer::Signer, transaction::Transaction,
+    secp256k1_instruction::*, signature::Keypair, signer::Signer, transaction::Transaction,
     transport::TransportError,
-    secp256k1_instruction::*,
 };
 use utils::program_test;
-use rand::{thread_rng, Rng};
-use secp256k1::{PublicKey, SecretKey, Message, Signature, RecoveryId};
-use sha3::Digest;
-use serde_derive::{Deserialize, Serialize};
 
 #[tokio::test]
 async fn transfer_test() {
-    let mut program_test = program_test();
+    let program_test = program_test();
     let mut context = program_test.start_with_context().await;
 
     let mint = Keypair::new();
@@ -68,7 +62,13 @@ async fn transfer_test() {
         seed.as_ref(),
     )
     .unwrap();
-    create_sender(&mut context, &reward_manager.pubkey(), &manager_account, eth_address_1).await;
+    create_sender(
+        &mut context,
+        &reward_manager.pubkey(),
+        &manager_account,
+        eth_address_1,
+    )
+    .await;
 
     let mut rng = thread_rng();
     let key: [u8; 32] = rng.gen();
@@ -85,7 +85,13 @@ async fn transfer_test() {
         seed.as_ref(),
     )
     .unwrap();
-    create_sender(&mut context, &reward_manager.pubkey(), &manager_account, eth_address_2).await;
+    create_sender(
+        &mut context,
+        &reward_manager.pubkey(),
+        &manager_account,
+        eth_address_2,
+    )
+    .await;
 
     let tokens_amount = 10_000;
 
@@ -100,9 +106,12 @@ async fn transfer_test() {
     .unwrap();
 
     let recipient_eth_key = [7u8; 20];
-    let mut seed = Vec::new();
-    seed.extend_from_slice(&recipient_eth_key.as_ref());
-    let recipient_sol_key = get_address_pair(&claimable_tokens::id(), &mint.pubkey(), seed.as_ref()).unwrap();
+    let recipient_sol_key = claimable_tokens::utils::program::get_address_pair(
+        &claimable_tokens::id(),
+        &mint.pubkey(),
+        recipient_eth_key,
+    )
+    .unwrap();
     create_recipient_with_claimable_program(&mut context, &mint.pubkey(), recipient_eth_key).await;
 
     let transfer_id = "4r4t23df32543f55";
@@ -123,8 +132,10 @@ async fn transfer_test() {
     bot_oracle_message.extend_from_slice(b"_");
     bot_oracle_message.extend_from_slice(transfer_id.as_ref());
 
-    let sender_secp256_program_instruction = new_secp256k1_instruction_2_0(&sender_priv_key, senders_message.as_ref(), 0);
-    let oracle_secp256_program_instruction = new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 1);
+    let sender_secp256_program_instruction =
+        new_secp256k1_instruction_2_0(&sender_priv_key, senders_message.as_ref(), 0);
+    let oracle_secp256_program_instruction =
+        new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 1);
 
     let tx = Transaction::new_signed_with_payer(
         &[
@@ -138,12 +149,18 @@ async fn transfer_test() {
                 &second_sender.derive.address,
                 &context.payer.pubkey(),
                 vec![first_sender.derive.address, second_sender.derive.address],
-                instruction::Transfer{amount: tokens_amount, id: String::from(transfer_id), eth_recipient: recipient_eth_key},
-            ).unwrap(),
+                instruction::Transfer {
+                    amount: tokens_amount,
+                    id: String::from(transfer_id),
+                    eth_recipient: recipient_eth_key,
+                },
+            )
+            .unwrap(),
         ],
         Some(&context.payer.pubkey()),
-        &[&context.payer,],
-        context.last_blockhash,);
+        &[&context.payer],
+        context.last_blockhash,
+    );
 
     context.banks_client.process_transaction(tx).await.unwrap();
 }
@@ -215,7 +232,7 @@ async fn create_sender(
     context: &mut ProgramTestContext,
     reward_manager: &Pubkey,
     manager_acc: &Keypair,
-    eth_address: [u8; 20]
+    eth_address: [u8; 20],
 ) {
     let tx = Transaction::new_signed_with_payer(
         &[instruction::create_sender(

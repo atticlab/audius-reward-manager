@@ -24,9 +24,9 @@ use solana_program::{
 use spl_token::state::Account as TokenAccount;
 
 /// Sender program account seed
-pub const SENDER_SEED_PREFIX: &'static str = "S_";
+pub const SENDER_SEED_PREFIX: &str = "S_";
 /// Transfer program account seed
-pub const TRANSFER_SEED_PREFIX: &'static str = "T_";
+pub const TRANSFER_SEED_PREFIX: &str = "T_";
 
 /// Program state handler.
 pub struct Processor;
@@ -42,6 +42,7 @@ impl Processor {
     }
 
     /// Process example instruction
+    #[allow(clippy::too_many_arguments)]
     fn process_init_instruction<'a>(
         program_id: &Pubkey,
         reward_manager_info: &AccountInfo<'a>,
@@ -85,6 +86,7 @@ impl Processor {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn process_create_sender<'a>(
         program_id: &Pubkey,
         eth_address: [u8; 20],
@@ -166,6 +168,7 @@ impl Processor {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn process_transfer<'a>(
         program_id: &Pubkey,
         reward_manager: &AccountInfo<'a>,
@@ -207,13 +210,11 @@ impl Processor {
             return Err(ProgramError::InvalidSeeds);
         }
 
-        let mut seed = Vec::new();
-        seed.extend_from_slice(&transfer_data.eth_recipient.as_ref());
         let vault_token_acc_data = TokenAccount::unpack(&vault_token_account.data.borrow())?;
-        let generated_recipient_key = get_address_pair(
+        let generated_recipient_key = claimable_tokens::utils::program::get_address_pair(
             &claimable_tokens::id(),
             &vault_token_acc_data.mint,
-            seed.as_ref(),
+            transfer_data.eth_recipient,
         )?;
         if generated_recipient_key.derive.address != *recipient.key {
             return Err(AudiusProgramError::WrongRecipientKey.into());
@@ -358,6 +359,7 @@ impl Processor {
                 let transfer_acc_to_create = next_account_info(account_info_iter)?;
                 let instruction_info = next_account_info(account_info_iter)?;
                 let _spl_token_program = next_account_info(account_info_iter)?;
+                let _system_program = next_account_info(account_info_iter)?;
 
                 let senders =
                     next_account_infos(&mut account_info_iter.clone(), account_info_iter.count())?

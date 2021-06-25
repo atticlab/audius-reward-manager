@@ -182,6 +182,7 @@ pub fn delete_sender(
 }
 
 /// Create `Transfer` instruction
+#[allow(clippy::too_many_arguments)]
 pub fn transfer(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
@@ -204,11 +205,9 @@ pub fn transfer(
     seed.extend_from_slice(params.id.as_ref());
     let transfer_acc_to_create = get_address_pair(program_id, reward_manager, seed.as_ref())?;
 
-    let reward_manager_authority = get_base_address(program_id, reward_manager).0;
-
     let mut accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
-        AccountMeta::new_readonly(reward_manager_authority, false),
+        AccountMeta::new_readonly(transfer_acc_to_create.base.address, false),
         AccountMeta::new(*recipient, false),
         AccountMeta::new(*vault_token_account, false),
         AccountMeta::new_readonly(*bot_oracle, false),
@@ -216,6 +215,7 @@ pub fn transfer(
         AccountMeta::new(transfer_acc_to_create.derive.address, false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
         AccountMeta::new_readonly(spl_token::id(), false),
+        AccountMeta::new_readonly(system_program::id(), false),
     ];
     for acc in senders {
         accounts.push(AccountMeta::new_readonly(acc, false))

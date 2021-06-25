@@ -88,7 +88,7 @@ pub fn token_transfer<'a>(
     authority: &AccountInfo<'a>,
     amount: u64,
 ) -> ProgramResult {
-    let bump_seed = get_base_address(reward_manager, program_id).1;
+    let bump_seed = get_base_address(program_id, reward_manager).1;
 
     let authority_signature_seeds = [&reward_manager.to_bytes()[..32], &[bump_seed]];
     let signers = &[&authority_signature_seeds[..]];
@@ -139,10 +139,10 @@ pub fn create_account_with_seed<'a>(
     )
 }
 
-pub fn get_secp_instructions<'a>(
+pub fn get_secp_instructions(
     index_current_instruction: u16,
     necessary_instructions_count: usize,
-    instruction_info: &AccountInfo<'a>,
+    instruction_info: &AccountInfo,
 ) -> Result<Vec<Instruction>, AudiusProgramError> {
     let mut secp_instructions: Vec<Instruction> = Vec::new();
 
@@ -248,7 +248,7 @@ pub fn verify_secp_instructions(
             validate_eth_signature(bot_oracle_message.as_ref(), instruction.data.clone())?;
             successful_verifications += 1;
         }
-        if senders_eth_addresses.contains(&eth_signer) {
+        if senders_eth_addresses.contains(&eth_signer) && eth_signer != bot_oracle_eth_address {
             validate_eth_signature(senders_message.as_ref(), instruction.data)?;
             successful_verifications += 1;
         }
