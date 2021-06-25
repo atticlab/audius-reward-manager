@@ -357,6 +357,7 @@ impl Processor {
                 let funder = next_account_info(account_info_iter)?;
                 let transfer_acc_to_create = next_account_info(account_info_iter)?;
                 let instruction_info = next_account_info(account_info_iter)?;
+                let _spl_token_program = next_account_info(account_info_iter)?;
 
                 let senders =
                     next_account_infos(&mut account_info_iter.clone(), account_info_iter.count())?
