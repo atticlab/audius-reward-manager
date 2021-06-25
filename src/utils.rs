@@ -182,7 +182,7 @@ pub fn get_eth_addresses<'a>(
         let mut seed = Vec::new();
         seed.extend_from_slice(&sender_data.eth_address.as_ref());
         seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
-        
+
         let generated_sender_key = get_address_pair(program_id, reward_manager_key, seed.as_ref())?;
         if generated_sender_key.derive.address != *sender.key {
             return Err(ProgramError::InvalidSeeds);

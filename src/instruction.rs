@@ -66,11 +66,12 @@ pub enum Instructions {
     ///   Transfer tokens to pointed receiver
     ///
     ///   0. `[]` `Reward Manager`
-    ///   1. `[]` `Reward Manager` authority
+    ///   1. `[]` `Reward Manager` authority. Program account
     ///   2. `[w]` Vault with all the "reward" tokens. Program is authority
     ///   3. `[]` Bot oracle
     ///   4. `[w]` Recipient. Key generated from Eth address
     ///   5. `[sw]` Funder. Account which pay for new account creation
+    ///   6. `[w]` Transfer account to create
     ///   6. `[r]` Sysvar instruction id
     ///   7. `[]` Senders
     ///   ...
@@ -184,18 +185,13 @@ pub fn delete_sender(
 pub fn transfer(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
-    reward_manager_authority: &Pubkey,
+    recipient: &Pubkey,
     vault_token_account: &Pubkey,
     bot_oracle: &Pubkey,
     funder: &Pubkey,
     senders: Vec<Pubkey>,
     params: Transfer,
 ) -> Result<Instruction, ProgramError> {
-    let recipient = Pubkey::find_program_address(
-        &[reward_manager.as_ref(), params.eth_recipient.as_ref()],
-        program_id,
-    )
-    .0;
     let data = Instructions::Transfer {
         amount: params.amount,
         id: params.id.clone(),
@@ -208,15 +204,18 @@ pub fn transfer(
     seed.extend_from_slice(params.id.as_ref());
     let transfer_acc_to_create = get_address_pair(program_id, reward_manager, seed.as_ref())?;
 
+    let reward_manager_authority = get_base_address(program_id, reward_manager).0;
+
     let mut accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
-        AccountMeta::new_readonly(*reward_manager_authority, false),
-        AccountMeta::new(recipient, false),
+        AccountMeta::new_readonly(reward_manager_authority, false),
+        AccountMeta::new(*recipient, false),
         AccountMeta::new(*vault_token_account, false),
         AccountMeta::new_readonly(*bot_oracle, false),
         AccountMeta::new(*funder, true),
         AccountMeta::new(transfer_acc_to_create.derive.address, false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
+        AccountMeta::new_readonly(spl_token::id(), false),
     ];
     for acc in senders {
         accounts.push(AccountMeta::new_readonly(acc, false))

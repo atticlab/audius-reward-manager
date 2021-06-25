@@ -15,11 +15,13 @@ use solana_program::{
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_pack::IsInitialized,
+    program_pack::Pack,
     pubkey::Pubkey,
     rent::Rent,
     system_instruction, sysvar,
     sysvar::Sysvar,
 };
+use spl_token::state::Account as TokenAccount;
 
 /// Sender program account seed
 pub const SENDER_SEED_PREFIX: &'static str = "S_";
@@ -207,13 +209,17 @@ impl Processor {
 
         let mut seed = Vec::new();
         seed.extend_from_slice(&transfer_data.eth_recipient.as_ref());
-        let generated_recipient_key =
-            get_address_pair(program_id, reward_manager.key, seed.as_ref())?;
+        let vault_token_acc_data = TokenAccount::unpack(&vault_token_account.data.borrow())?;
+        let generated_recipient_key = get_address_pair(
+            &claimable_tokens::id(),
+            &vault_token_acc_data.mint,
+            seed.as_ref(),
+        )?;
         if generated_recipient_key.derive.address != *recipient.key {
             return Err(AudiusProgramError::WrongRecipientKey.into());
         }
 
-        if (senders.len() as u8) < reward_manager_data.min_votes {
+        if ((senders.len() + 1) as u8) < reward_manager_data.min_votes {
             return Err(AudiusProgramError::NotEnoughSenders.into());
         }
 
