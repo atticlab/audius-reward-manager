@@ -1,7 +1,5 @@
 //! Instruction types
 
-use std::array::IntoIter;
-
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -206,7 +204,7 @@ pub fn delete_sender(
 }
 
 /// Create `AddSender` instruction
-pub fn add_sender<I>(
+pub fn add_sender<'a, I>(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
     funder: &Pubkey,
@@ -215,7 +213,7 @@ pub fn add_sender<I>(
     signers: I,
 ) -> Result<Instruction, ProgramError>
 where
-    I: IntoIterator<Item = Pubkey>,
+    I: IntoIterator<Item = &'a Pubkey>,
 {
     let data = Instructions::AddSender {
         eth_address,
@@ -239,7 +237,7 @@ where
     ];
     let iter = signers
         .into_iter()
-        .map(|i| AccountMeta::new_readonly(i, true));
+        .map(|i| AccountMeta::new_readonly(*i, true));
     accounts.extend(iter);
 
     Ok(Instruction {
@@ -278,7 +276,7 @@ where
     let transfer_acc_to_create = get_address_pair(
         program_id,
         reward_manager,
-        &[SENDER_SEED_PREFIX.as_ref(), &params.id.as_ref()],
+        &[TRANSFER_SEED_PREFIX.as_ref(), &params.id.as_ref()],
     )?;
 
     let mut accounts = vec![

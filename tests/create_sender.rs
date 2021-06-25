@@ -20,6 +20,7 @@ async fn success() {
     let token_account = Pubkey::new_unique();
     let manager_account = Keypair::new();
     let eth_address = [0u8; 20];
+    let operator = [0u8; 20];
 
     let reward_manager_data = RewardManager::new(token_account, manager_account.pubkey(), 3);
     program_test.add_account(
@@ -41,6 +42,7 @@ async fn success() {
             &manager_account.pubkey(),
             &context.payer.pubkey(),
             eth_address,
+            operator,
         )
         .unwrap()],
         Some(&context.payer.pubkey()),
@@ -50,14 +52,15 @@ async fn success() {
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    let mut seed = Vec::new();
-    seed.extend_from_slice(&eth_address.as_ref());
-    seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
-    let pair =
-        get_address_pair(&audius_reward_manager::id(), &reward_manager, seed.as_ref()).unwrap();
+    let pair = get_address_pair(
+        &audius_reward_manager::id(),
+        &reward_manager,
+        &[SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()],
+    )
+    .unwrap();
 
     assert_eq!(
-        SenderAccount::new(manager_account.pubkey(), eth_address),
+        SenderAccount::new(manager_account.pubkey(), eth_address, operator),
         context
             .banks_client
             .get_account_data_with_borsh(pair.derive.address)

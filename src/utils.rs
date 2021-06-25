@@ -273,7 +273,7 @@ pub fn build_verify_secp_add_sender(
     new_sender: EthereumAddress,
 ) -> impl VerifierFn {
     return Box::new(
-        move |instructions: Vec<Instruction>, signers: Vec<EthereumAddress>| {
+        move |instructions: Vec<Instruction>, _signers: Vec<EthereumAddress>| {
             let expected_message = [reward_manager_key.as_ref(), new_sender.as_ref()].concat();
             for instruction in instructions {
                 validate_eth_signature(expected_message.as_ref(), instruction.data)?;

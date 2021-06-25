@@ -58,7 +58,7 @@ pub struct SenderAccount {
 
 impl SenderAccount {
     /// The struct size on bytes
-    pub const LEN: usize = 53;
+    pub const LEN: usize = 73;
 
     /// Creates new `SenderAccount`
     pub fn new(
