@@ -40,15 +40,34 @@ pub struct AddressPair {
     pub derive: Derived,
 }
 
+/// Macro to check if program is owner for pointed accounts
+#[macro_export]
+macro_rules! is_owner {
+    (
+        $program_id:expr,
+        $($account:expr),+
+    )
+    => {
+        {
+            $(
+                if *$account.owner != $program_id {
+                    return Err(ProgramError::IncorrectProgramId);
+                }
+            )+
+
+
+            std::result::Result::<(),ProgramError>::Ok(())
+        }
+    }
+}
+
 /// Return `Base` account with seed and corresponding derive
 /// with seed
 pub fn get_address_pair(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
-    seed_data: Vec<&[u8]>,
+    seed: Vec<u8>,
 ) -> Result<AddressPair, PubkeyError> {
-    let seed = construct_seed(seed_data);
-
     let (base_pk, base_seed) = get_base_address(program_id, reward_manager);
     let (derived_pk, derive_seed) =
         get_derived_address(program_id, &base_pk.clone(), seed.as_ref())?;
@@ -182,15 +201,16 @@ pub fn get_eth_addresses<'a>(
         if !sender_data.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
         }
-        // let seed = construct_seed(vec![sender_data.eth_address.as_ref(), SENDER_SEED_PREFIX.as_ref()]);
+
+        is_owner!(*program_id, sender)?;
 
         let generated_sender_key = get_address_pair(
             program_id,
             reward_manager_key,
-            vec![
+            [
                 sender_data.eth_address.as_ref(),
                 SENDER_SEED_PREFIX.as_ref(),
-            ],
+            ].concat(),
         )?;
         if generated_sender_key.derive.address != *sender.key {
             return Err(ProgramError::InvalidSeeds);
@@ -226,16 +246,6 @@ pub fn validate_eth_signature(
     Ok(())
 }
 
-pub fn construct_seed(seed_data: Vec<&[u8]>) -> Vec<u8> {
-    let mut seed = Vec::new();
-
-    for data in seed_data {
-        seed.extend_from_slice(data);
-    }
-
-    seed
-}
-
 pub fn verify_secp_instructions(
     bot_oracle_eth_address: [u8; 20],
     senders_eth_addresses: Vec<[u8; 20]>,
@@ -244,15 +254,15 @@ pub fn verify_secp_instructions(
 ) -> Result<(), ProgramError> {
     let mut successful_verifications = 0;
 
-    let bot_oracle_message = construct_seed(vec![
+    let bot_oracle_message = [
         transfer_data.eth_recipient.as_ref(),
         b"_",
         transfer_data.amount.to_le_bytes().as_ref(),
         b"_",
         transfer_data.id.as_ref(),
-    ]);
+    ].concat();
 
-    let senders_message = construct_seed(vec![
+    let senders_message = [
         transfer_data.eth_recipient.as_ref(),
         b"_",
         transfer_data.amount.to_le_bytes().as_ref(),
@@ -260,7 +270,7 @@ pub fn verify_secp_instructions(
         transfer_data.id.as_ref(),
         b"_",
         bot_oracle_eth_address.as_ref(),
-    ]);
+    ].concat();
 
     for instruction in secp_instructions {
         let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());

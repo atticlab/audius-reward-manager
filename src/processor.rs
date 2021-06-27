@@ -5,6 +5,7 @@ use crate::{
     instruction::{Instructions, Transfer},
     state::{RewardManager, SenderAccount},
     utils::*,
+    is_owner,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -27,6 +28,10 @@ use spl_token::state::Account as TokenAccount;
 pub const SENDER_SEED_PREFIX: &str = "S_";
 /// Transfer program account seed
 pub const TRANSFER_SEED_PREFIX: &str = "T_";
+/// Transfer account balance
+pub const TRANSFER_ACC_BALANCE: u8 = 1;
+/// Transfer account space
+pub const TRANSFER_ACC_SPACE: u8 = 0;
 
 /// Program state handler.
 pub struct Processor;
@@ -111,7 +116,7 @@ impl Processor {
         let pair = get_address_pair(
             program_id,
             reward_manager_info.key,
-            vec![eth_address.as_ref(), SENDER_SEED_PREFIX.as_ref()],
+            [eth_address.as_ref(), SENDER_SEED_PREFIX.as_ref()].concat(),
         )?;
         if *sender_info.key != pair.derive.address {
             msg!("Incorrect sender account");
@@ -193,14 +198,17 @@ impl Processor {
             return Err(ProgramError::UninitializedAccount);
         }
 
+        is_owner!(*program_id, reward_manager, bot_oracle)?;
+
         let generated_bot_oracle_key = get_address_pair(
             program_id,
             reward_manager.key,
-            vec![
+            [
                 bot_oracle_data.eth_address.as_ref(),
                 SENDER_SEED_PREFIX.as_ref(),
-            ],
+            ].concat(),
         )?;
+
         if generated_bot_oracle_key.derive.address != *bot_oracle.key {
             return Err(ProgramError::InvalidSeeds);
         }
@@ -208,18 +216,21 @@ impl Processor {
         let generated_transfer_acc_to_create = get_address_pair(
             program_id,
             reward_manager.key,
-            vec![TRANSFER_SEED_PREFIX.as_ref(), transfer_data.id.as_ref()],
+            [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_data.id.as_ref()].concat(),
         )?;
+
         if generated_transfer_acc_to_create.derive.address != *transfer_acc_to_create.key {
             return Err(ProgramError::InvalidSeeds);
         }
 
         let vault_token_acc_data = TokenAccount::unpack(&vault_token_account.data.borrow())?;
+
         let generated_recipient_key = claimable_tokens::utils::program::get_address_pair(
             &claimable_tokens::id(),
             &vault_token_acc_data.mint,
             transfer_data.eth_recipient,
         )?;
+
         if generated_recipient_key.derive.address != *recipient.key {
             return Err(AudiusProgramError::WrongRecipientKey.into());
         }
@@ -231,14 +242,20 @@ impl Processor {
 
         let instruction_index =
             sysvar::instructions::load_current_index(&instruction_info.data.borrow());
+        
         if instruction_index == 0 {
             return Err(AudiusProgramError::Secp256InstructionMissing.into());
         }
 
+        // NOTE: +1 it's bot oracle
         let secp_instructions =
-            get_secp_instructions(instruction_index, senders.len(), instruction_info)?;
+            get_secp_instructions(instruction_index, senders.len() + 1, instruction_info)?;
 
         let senders_eth_addresses = get_eth_addresses(program_id, reward_manager.key, senders)?;
+
+        if senders_eth_addresses.contains(&bot_oracle_data.eth_address) {
+            return Err(AudiusProgramError::NotEnoughSenders.into());
+        }
 
         verify_secp_instructions(
             bot_oracle_data.eth_address,
@@ -256,20 +273,15 @@ impl Processor {
             transfer_data.amount,
         )?;
 
-        let seed = construct_seed(vec![
-            TRANSFER_SEED_PREFIX.as_ref(),
-            transfer_data.id.as_ref(),
-        ]);
-
         create_account_with_seed(
             program_id,
             funder,
             transfer_acc_to_create,
             reward_manager_authority,
             reward_manager.key,
-            seed.as_ref(),
-            1,
-            0,
+            [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_data.id.as_ref()].concat().as_ref(),
+            TRANSFER_ACC_BALANCE as u64,
+            TRANSFER_ACC_SPACE as u64,
             program_id,
         )
     }

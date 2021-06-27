@@ -67,13 +67,15 @@ pub enum Instructions {
     ///
     ///   0. `[]` `Reward Manager`
     ///   1. `[]` `Reward Manager` authority. Program account
-    ///   2. `[w]` Vault with all the "reward" tokens. Program is authority
-    ///   3. `[]` Bot oracle
-    ///   4. `[w]` Recipient. Key generated from Eth address
+    ///   2. `[w]` Recipient. Key generated from Eth address
+    ///   3. `[w]` Vault with all the "reward" tokens. Program is authority
+    ///   4. `[]` Bot oracle
     ///   5. `[sw]` Funder. Account which pay for new account creation
     ///   6. `[w]` Transfer account to create
-    ///   6. `[r]` Sysvar instruction id
-    ///   7. `[]` Senders
+    ///   7. `[]` Sysvar instruction id
+    ///   8. `[]` SPL Token id
+    ///   9. `[]` System program
+    ///   10. `[]` Senders
     ///   ...
     ///   n. `[]`
     Transfer {
@@ -130,7 +132,7 @@ pub fn create_sender(
     let pair = get_address_pair(
         program_id,
         reward_manager,
-        vec![eth_address.as_ref(), SENDER_SEED_PREFIX.as_ref()],
+        [eth_address.as_ref(), SENDER_SEED_PREFIX.as_ref()].concat(),
     )?;
 
     let accounts = vec![
@@ -164,7 +166,7 @@ pub fn delete_sender(
     let pair = get_address_pair(
         program_id,
         reward_manager,
-        vec![eth_address.as_ref(), SENDER_SEED_PREFIX.as_ref()],
+        [eth_address.as_ref(), SENDER_SEED_PREFIX.as_ref()].concat(),
     )?;
 
     let accounts = vec![
@@ -205,7 +207,7 @@ pub fn transfer(
     let transfer_acc_to_create = get_address_pair(
         program_id,
         reward_manager,
-        vec![TRANSFER_SEED_PREFIX.as_ref(), params.id.as_ref()],
+        [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), params.id.as_ref()].concat(),
     )?;
 
     let mut accounts = vec![
