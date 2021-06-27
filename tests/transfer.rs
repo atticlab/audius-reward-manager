@@ -1,6 +1,10 @@
 #![cfg(feature = "test-bpf")]
 mod utils;
-use audius_reward_manager::{instruction, processor::SENDER_SEED_PREFIX, utils::get_address_pair};
+use audius_reward_manager::{
+    instruction,
+    processor::SENDER_SEED_PREFIX,
+    utils::{construct_seed, get_address_pair},
+};
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
 use sha3::Digest;
@@ -52,14 +56,11 @@ async fn transfer_test() {
     let sender_priv_key = SecretKey::parse(&key).unwrap();
     let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
     let eth_address_1 = construct_eth_pubkey(&secp_pubkey);
-    let mut seed = Vec::new();
-    seed.extend_from_slice(&eth_address_1.as_ref());
-    seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
 
     let first_sender = get_address_pair(
         &audius_reward_manager::id(),
         &reward_manager.pubkey(),
-        seed.as_ref(),
+        vec![eth_address_1.as_ref(), SENDER_SEED_PREFIX.as_ref()],
     )
     .unwrap();
     create_sender(
@@ -75,14 +76,11 @@ async fn transfer_test() {
     let oracle_priv_key = SecretKey::parse(&key).unwrap();
     let secp_pubkey = PublicKey::from_secret_key(&oracle_priv_key);
     let eth_address_2 = construct_eth_pubkey(&secp_pubkey);
-    let mut seed = Vec::new();
-    seed.extend_from_slice(&eth_address_2.as_ref());
-    seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
 
     let second_sender = get_address_pair(
         &audius_reward_manager::id(),
         &reward_manager.pubkey(),
-        seed.as_ref(),
+        vec![eth_address_2.as_ref(), SENDER_SEED_PREFIX.as_ref()],
     )
     .unwrap();
     create_sender(
@@ -116,21 +114,23 @@ async fn transfer_test() {
 
     let transfer_id = "4r4t23df32543f55";
 
-    let mut senders_message = Vec::new();
-    senders_message.extend_from_slice(recipient_eth_key.as_ref());
-    senders_message.extend_from_slice(b"_");
-    senders_message.extend_from_slice(tokens_amount.to_le_bytes().as_ref());
-    senders_message.extend_from_slice(b"_");
-    senders_message.extend_from_slice(transfer_id.as_ref());
-    senders_message.extend_from_slice(b"_");
-    senders_message.extend_from_slice(eth_address_2.as_ref());
+    let senders_message = construct_seed(vec![
+        recipient_eth_key.as_ref(),
+        b"_",
+        tokens_amount.to_le_bytes().as_ref(),
+        b"_",
+        transfer_id.as_ref(),
+        b"_",
+        eth_address_2.as_ref(),
+    ]);
 
-    let mut bot_oracle_message = Vec::new();
-    bot_oracle_message.extend_from_slice(recipient_eth_key.as_ref());
-    bot_oracle_message.extend_from_slice(b"_");
-    bot_oracle_message.extend_from_slice(tokens_amount.to_le_bytes().as_ref());
-    bot_oracle_message.extend_from_slice(b"_");
-    bot_oracle_message.extend_from_slice(transfer_id.as_ref());
+    let bot_oracle_message = construct_seed(vec![
+        recipient_eth_key.as_ref(),
+        b"_",
+        tokens_amount.to_le_bytes().as_ref(),
+        b"_",
+        transfer_id.as_ref(),
+    ]);
 
     let sender_secp256_program_instruction =
         new_secp256k1_instruction_2_0(&sender_priv_key, senders_message.as_ref(), 0);

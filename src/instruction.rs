@@ -127,10 +127,11 @@ pub fn create_sender(
     let create_data = Instructions::CreateSender { eth_address };
     let data = create_data.try_to_vec()?;
 
-    let mut seed = Vec::new();
-    seed.extend_from_slice(&eth_address.as_ref());
-    seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
-    let pair = get_address_pair(program_id, reward_manager, seed.as_ref())?;
+    let pair = get_address_pair(
+        program_id,
+        reward_manager,
+        vec![eth_address.as_ref(), SENDER_SEED_PREFIX.as_ref()],
+    )?;
 
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
@@ -160,10 +161,11 @@ pub fn delete_sender(
     let delete_data = Instructions::DeleteSender;
     let data = delete_data.try_to_vec()?;
 
-    let mut seed = Vec::new();
-    seed.extend_from_slice(&eth_address.as_ref());
-    seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
-    let pair = get_address_pair(program_id, reward_manager, seed.as_ref())?;
+    let pair = get_address_pair(
+        program_id,
+        reward_manager,
+        vec![eth_address.as_ref(), SENDER_SEED_PREFIX.as_ref()],
+    )?;
 
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
@@ -200,10 +202,11 @@ pub fn transfer(
     }
     .try_to_vec()?;
 
-    let mut seed = Vec::new();
-    seed.extend_from_slice(TRANSFER_SEED_PREFIX.as_ref());
-    seed.extend_from_slice(params.id.as_ref());
-    let transfer_acc_to_create = get_address_pair(program_id, reward_manager, seed.as_ref())?;
+    let transfer_acc_to_create = get_address_pair(
+        program_id,
+        reward_manager,
+        vec![TRANSFER_SEED_PREFIX.as_ref(), params.id.as_ref()],
+    )?;
 
     let mut accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),

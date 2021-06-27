@@ -108,10 +108,11 @@ impl Processor {
             todo!();
         }
 
-        let mut seed = Vec::new();
-        seed.extend_from_slice(&eth_address.as_ref());
-        seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
-        let pair = get_address_pair(program_id, reward_manager_info.key, seed.as_ref())?;
+        let pair = get_address_pair(
+            program_id,
+            reward_manager_info.key,
+            vec![eth_address.as_ref(), SENDER_SEED_PREFIX.as_ref()],
+        )?;
         if *sender_info.key != pair.derive.address {
             msg!("Incorrect sender account");
             todo!()
@@ -192,20 +193,23 @@ impl Processor {
             return Err(ProgramError::UninitializedAccount);
         }
 
-        let mut seed = Vec::new();
-        seed.extend_from_slice(&bot_oracle_data.eth_address.as_ref());
-        seed.extend_from_slice(SENDER_SEED_PREFIX.as_ref());
-        let generated_bot_oracle_key =
-            get_address_pair(program_id, reward_manager.key, seed.as_ref())?;
+        let generated_bot_oracle_key = get_address_pair(
+            program_id,
+            reward_manager.key,
+            vec![
+                bot_oracle_data.eth_address.as_ref(),
+                SENDER_SEED_PREFIX.as_ref(),
+            ],
+        )?;
         if generated_bot_oracle_key.derive.address != *bot_oracle.key {
             return Err(ProgramError::InvalidSeeds);
         }
 
-        let mut seed = Vec::new();
-        seed.extend_from_slice(TRANSFER_SEED_PREFIX.as_ref());
-        seed.extend_from_slice(transfer_data.id.as_ref());
-        let generated_transfer_acc_to_create =
-            get_address_pair(program_id, reward_manager.key, seed.as_ref())?;
+        let generated_transfer_acc_to_create = get_address_pair(
+            program_id,
+            reward_manager.key,
+            vec![TRANSFER_SEED_PREFIX.as_ref(), transfer_data.id.as_ref()],
+        )?;
         if generated_transfer_acc_to_create.derive.address != *transfer_acc_to_create.key {
             return Err(ProgramError::InvalidSeeds);
         }
@@ -220,6 +224,7 @@ impl Processor {
             return Err(AudiusProgramError::WrongRecipientKey.into());
         }
 
+        // NOTE: +1 it's bot oracle
         if ((senders.len() + 1) as u8) < reward_manager_data.min_votes {
             return Err(AudiusProgramError::NotEnoughSenders.into());
         }
@@ -251,9 +256,10 @@ impl Processor {
             transfer_data.amount,
         )?;
 
-        let mut seed = Vec::new();
-        seed.extend_from_slice(TRANSFER_SEED_PREFIX.as_ref());
-        seed.extend_from_slice(transfer_data.id.as_ref());
+        let seed = construct_seed(vec![
+            TRANSFER_SEED_PREFIX.as_ref(),
+            transfer_data.id.as_ref(),
+        ]);
 
         create_account_with_seed(
             program_id,
