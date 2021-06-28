@@ -1,21 +1,25 @@
 #![cfg(feature = "test-bpf")]
 mod utils;
-use audius_reward_manager::{
-    instruction,
-    processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX, TRANSFER_ACC_BALANCE, TRANSFER_ACC_SPACE},
-    utils::get_address_pair,
-};
+use audius_reward_manager::{instruction, processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX, TRANSFER_ACC_BALANCE, TRANSFER_ACC_SPACE}, utils::{EthereumAddress, get_address_pair}};
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
-use solana_program::program_pack::Pack;
+use solana_program::{program_pack::Pack, pubkey::Pubkey};
 use solana_program_test::*;
 use solana_sdk::{
     secp256k1_instruction::*, signature::Keypair, signer::Signer, transaction::Transaction,};
 use utils::*;
+use solana_program_test::processor;
 
 #[tokio::test]
 async fn transfer_test() {
-    let program_test = program_test();
+    let mut program_test = program_test();
+    program_test.add_program(
+        "claimable_tokens", 
+        claimable_tokens::id(), 
+        processor!(claimable_tokens::processor::Processor::process_instruction),
+    );
+    let rng = thread_rng();
+
     let mut context = program_test.start_with_context().await;
 
     let mint = Keypair::new();
@@ -51,6 +55,7 @@ async fn transfer_test() {
     let sender_priv_key = SecretKey::parse(&key).unwrap();
     let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
     let eth_address_1 = construct_eth_pubkey(&secp_pubkey);
+    let operator_1: EthereumAddress = rng.gen();
 
     let first_sender = get_address_pair(
         &audius_reward_manager::id(),
@@ -63,6 +68,7 @@ async fn transfer_test() {
         &reward_manager.pubkey(),
         &manager_account,
         eth_address_1,
+        operator_1,
     )
     .await;
 
@@ -71,6 +77,7 @@ async fn transfer_test() {
     let oracle_priv_key = SecretKey::parse(&key).unwrap();
     let secp_pubkey = PublicKey::from_secret_key(&oracle_priv_key);
     let eth_address_2 = construct_eth_pubkey(&secp_pubkey);
+    let operator_2: EthereumAddress = rng.gen();
 
     let second_sender = get_address_pair(
         &audius_reward_manager::id(),
@@ -83,6 +90,7 @@ async fn transfer_test() {
         &reward_manager.pubkey(),
         &manager_account,
         eth_address_2,
+        operator_2,
     )
     .await;
 
@@ -139,9 +147,9 @@ async fn transfer_test() {
             instruction::transfer(
                 &audius_reward_manager::id(),
                 &reward_manager.pubkey(),
-                &recipient_sol_key.derive.address,
-                &token_account.pubkey(),
-                &second_sender.derive.address,
+                todo!(), // &recipient_sol_key.derive.address,
+                todo!(), // &token_account.pubkey(),
+                         // &second_sender.derive.address,
                 &context.payer.pubkey(),
                 vec![first_sender.derive.address],
                 instruction::Transfer {

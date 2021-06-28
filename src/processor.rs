@@ -319,6 +319,7 @@ impl Processor {
         let vault_token_acc_data = TokenAccount::unpack(&vault_token_account.data.borrow())?;
 
         let generated_recipient_key = claimable_tokens::utils::program::get_address_pair(
+            &claimable_tokens::id(),
             &vault_token_acc_data.mint,
             transfer_data.eth_recipient,
         )?;

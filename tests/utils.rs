@@ -1,5 +1,6 @@
 #![cfg(feature = "test-bpf")]
 use audius_reward_manager::instruction;
+use audius_reward_manager::utils::EthereumAddress;
 use audius_reward_manager::{id, processor::Processor};
 use sha3::Digest;
 use solana_program::{
@@ -16,13 +17,11 @@ use solana_sdk::{
 };
 
 pub fn program_test() -> ProgramTest {
-    let mut program = ProgramTest::new(
+    ProgramTest::new(
         "audius_reward_manager",
         id(),
         processor!(Processor::process_instruction),
-    );
-    program.add_program("claimable_tokens", claimable_tokens::id(), None);
-    program
+    )
 }
 
 pub async fn get_account(
@@ -103,7 +102,8 @@ pub async fn create_sender(
     context: &mut ProgramTestContext,
     reward_manager: &Pubkey,
     manager_acc: &Keypair,
-    eth_address: [u8; 20],
+    eth_address: EthereumAddress,
+    operator: EthereumAddress,
 ) {
     let tx = Transaction::new_signed_with_payer(
         &[instruction::create_sender(
@@ -112,6 +112,7 @@ pub async fn create_sender(
             &manager_acc.pubkey(),
             &context.payer.pubkey(),
             eth_address,
+            operator,
         )
         .unwrap()],
         Some(&context.payer.pubkey()),
@@ -276,7 +277,7 @@ pub async fn mint_tokens_to(
 pub async fn create_recipient_with_claimable_program(
     program_context: &mut ProgramTestContext,
     mint: &Pubkey,
-    eth_address: [u8; 20],
+    eth_address: EthereumAddress,
 ) {
     let mut transaction = Transaction::new_with_payer(
         &[claimable_tokens::instruction::init(

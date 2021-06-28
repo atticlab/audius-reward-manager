@@ -62,7 +62,7 @@ async fn success() {
     .unwrap();
 
     assert_eq!(
-        SenderAccount::new(manager_account.pubkey(), eth_address, operator),
+        SenderAccount::new(reward_manager, eth_address, operator),
         context
             .banks_client
             .get_account_data_with_borsh(pair.derive.address)
