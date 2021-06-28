@@ -57,7 +57,7 @@ async fn success() {
     let pair = get_address_pair(
         &audius_reward_manager::id(),
         &reward_manager,
-        &[SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()],
+        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
     )
     .unwrap();
 

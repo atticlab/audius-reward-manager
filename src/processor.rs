@@ -5,6 +5,7 @@ use crate::{
     instruction::{Instructions, Transfer},
     state::{RewardManager, SenderAccount},
     utils::*,
+    is_owner,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -16,17 +17,23 @@ use solana_program::{
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_pack::IsInitialized,
+    program_pack::Pack,
     pubkey::Pubkey,
     rent::Rent,
     system_instruction, sysvar,
     sysvar::Sysvar,
 };
 use std::collections::hash_set::HashSet;
+use spl_token::state::Account as TokenAccount;
 
 /// Sender program account seed
-pub const SENDER_SEED_PREFIX: &'static str = "S_";
+pub const SENDER_SEED_PREFIX: &str = "S_";
 /// Transfer program account seed
-pub const TRANSFER_SEED_PREFIX: &'static str = "T_";
+pub const TRANSFER_SEED_PREFIX: &str = "T_";
+/// Transfer account balance
+pub const TRANSFER_ACC_BALANCE: u8 = 1;
+/// Transfer account space
+pub const TRANSFER_ACC_SPACE: u8 = 0;
 
 /// Program state handler.
 pub struct Processor;
@@ -42,6 +49,7 @@ impl Processor {
     }
 
     /// Process example instruction
+    #[allow(clippy::too_many_arguments)]
     fn process_init_instruction<'a>(
         program_id: &Pubkey,
         reward_manager_info: &AccountInfo<'a>,
@@ -85,6 +93,7 @@ impl Processor {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn process_create_sender<'a>(
         program_id: &Pubkey,
         eth_address: EthereumAddress,
@@ -109,7 +118,7 @@ impl Processor {
         let pair = get_address_pair(
             program_id,
             reward_manager_info.key,
-            &[SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()],
+            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
         )?;
         if *sender_info.key != pair.derive.address {
             return Err(AudiusProgramError::IncorectSenderAccount.into());
@@ -285,14 +294,14 @@ impl Processor {
             return Err(ProgramError::UninitializedAccount);
         }
 
+        is_owner!(*program_id, reward_manager, bot_oracle)?;
+
         let generated_bot_oracle_key = get_address_pair(
             program_id,
             reward_manager.key,
-            &[
-                SENDER_SEED_PREFIX.as_ref(),
-                bot_oracle_data.eth_address.as_ref(),
-            ],
+            [SENDER_SEED_PREFIX.as_ref(), bot_oracle_data.eth_address.as_ref()].concat(),
         )?;
+
         if generated_bot_oracle_key.derive.address != *bot_oracle.key {
             return Err(ProgramError::InvalidSeeds);
         }
@@ -300,17 +309,21 @@ impl Processor {
         let generated_transfer_acc_to_create = get_address_pair(
             program_id,
             reward_manager.key,
-            &[TRANSFER_SEED_PREFIX.as_ref(), transfer_data.id.as_ref()],
+            [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_data.id.as_ref()].concat(),
         )?;
+
         if generated_transfer_acc_to_create.derive.address != *transfer_acc_to_create.key {
             return Err(ProgramError::InvalidSeeds);
         }
 
-        let generated_recipient_key = get_address_pair(
-            program_id,
-            reward_manager.key,
-            &[transfer_data.eth_recipient.as_ref()],
+        let vault_token_acc_data = TokenAccount::unpack(&vault_token_account.data.borrow())?;
+
+        let generated_recipient_key = claimable_tokens::utils::program::get_address_pair(
+            &claimable_tokens::id(),
+            &vault_token_acc_data.mint,
+            transfer_data.eth_recipient,
         )?;
+
         if generated_recipient_key.derive.address != *recipient.key {
             return Err(AudiusProgramError::WrongRecipientKey.into());
         }
@@ -340,9 +353,9 @@ impl Processor {
             transfer_acc_to_create,
             reward_manager_authority,
             reward_manager.key,
-            &[TRANSFER_SEED_PREFIX.as_ref(), transfer_data.id.as_ref()],
-            1,
-            0,
+            [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_data.id.as_ref()].concat().as_ref(),
+            TRANSFER_ACC_BALANCE as u64,
+            TRANSFER_ACC_SPACE as u64,
             program_id,
         )
     }
@@ -466,6 +479,9 @@ impl Processor {
                 let funder = next_account_info(account_info_iter)?;
                 let transfer_acc_to_create = next_account_info(account_info_iter)?;
                 let instruction_info = next_account_info(account_info_iter)?;
+                let _spl_token_program = next_account_info(account_info_iter)?;
+                let _system_program = next_account_info(account_info_iter)?;
+
                 let signers = account_info_iter.collect::<Vec<&AccountInfo>>();
 
                 Self::process_transfer(

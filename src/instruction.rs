@@ -84,13 +84,16 @@ pub enum Instructions {
     ///   Transfer tokens to pointed receiver
     ///
     ///   0. `[]` `Reward Manager`
-    ///   1. `[]` `Reward Manager` authority
-    ///   2. `[w]` Vault with all the "reward" tokens. Program is authority
-    ///   3. `[]` Bot oracle
-    ///   4. `[w]` Recipient. Key generated from Eth address
+    ///   1. `[]` `Reward Manager` authority. Program account
+    ///   2. `[w]` Recipient. Key generated from Eth address
+    ///   3. `[w]` Vault with all the "reward" tokens. Program is authority
+    ///   4. `[]` Bot oracle
     ///   5. `[sw]` Funder. Account which pay for new account creation
-    ///   6. `[r]` Sysvar instruction id
-    ///   7. `[]` Senders
+    ///   6. `[w]` Transfer account to create
+    ///   7. `[]` Sysvar instruction id
+    ///   8. `[]` SPL Token id
+    ///   9. `[]` System program
+    ///   10. `[]` Senders
     ///   ...
     ///   n. `[]`
     Transfer {
@@ -151,7 +154,7 @@ pub fn create_sender(
     let pair = get_address_pair(
         program_id,
         reward_manager,
-        &[SENDER_SEED_PREFIX.as_ref(), &eth_address.as_ref()],
+        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
     )?;
 
     let accounts = vec![
@@ -185,7 +188,7 @@ pub fn delete_sender(
     let pair = get_address_pair(
         program_id,
         reward_manager,
-        &[SENDER_SEED_PREFIX.as_ref(), &eth_address.as_ref()],
+        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
     )?;
 
     let accounts = vec![
@@ -251,7 +254,6 @@ where
 pub fn transfer<I>(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
-    reward_manager_authority: &Pubkey,
     vault_token_account: &Pubkey,
     bot_oracle: &Pubkey,
     funder: &Pubkey,
@@ -276,18 +278,20 @@ where
     let transfer_acc_to_create = get_address_pair(
         program_id,
         reward_manager,
-        &[TRANSFER_SEED_PREFIX.as_ref(), &params.id.as_ref()],
+        [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), params.id.as_ref()].concat(),
     )?;
 
     let mut accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
-        AccountMeta::new_readonly(*reward_manager_authority, false),
-        AccountMeta::new(recipient, false),
+        AccountMeta::new_readonly(transfer_acc_to_create.base.address, false),
+        AccountMeta::new(*recipient, false),
         AccountMeta::new(*vault_token_account, false),
         AccountMeta::new_readonly(*bot_oracle, false),
         AccountMeta::new(*funder, true),
         AccountMeta::new(transfer_acc_to_create.derive.address, false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
+        AccountMeta::new_readonly(spl_token::id(), false),
+        AccountMeta::new_readonly(system_program::id(), false),
     ];
     let iter = senders
         .into_iter()

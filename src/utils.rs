@@ -40,16 +40,37 @@ pub struct AddressPair {
     pub derive: Derived,
 }
 
+/// Macro to check if program is owner for pointed accounts
+#[macro_export]
+macro_rules! is_owner {
+    (
+        $program_id:expr,
+        $($account:expr),+
+    )
+    => {
+        {
+            $(
+                if *$account.owner != $program_id {
+                    return Err(ProgramError::IncorrectProgramId);
+                }
+            )+
+
+
+            std::result::Result::<(),ProgramError>::Ok(())
+        }
+    }
+}
+
 /// Return `Base` account with seed and corresponding derive
 /// with seed
 pub fn get_address_pair(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
-    seeds: &[&[u8]],
+    seed: Vec<u8>,
 ) -> Result<AddressPair, PubkeyError> {
     let (base_pk, base_seed) = get_base_address(program_id, reward_manager);
     let (derived_pk, derive_seed) =
-        get_derived_address(program_id, &base_pk.clone(), seeds.concat().as_ref())?;
+        get_derived_address(program_id, &base_pk.clone(), seed.as_ref())?;
     Ok(AddressPair {
         base: Base {
             address: base_pk,
@@ -89,7 +110,7 @@ pub fn token_transfer<'a>(
     authority: &AccountInfo<'a>,
     amount: u64,
 ) -> ProgramResult {
-    let bump_seed = get_base_address(reward_manager, program_id).1;
+    let bump_seed = get_base_address(program_id, reward_manager).1;
 
     let authority_signature_seeds = [&reward_manager.to_bytes()[..32], &[bump_seed]];
     let signers = &[&authority_signature_seeds[..]];
@@ -140,10 +161,10 @@ pub fn create_account_with_seed<'a>(
     )
 }
 
-pub fn get_secp_instructions<'a>(
+pub fn get_secp_instructions(
     index_current_instruction: u16,
     necessary_instructions_count: usize,
-    instruction_info: &AccountInfo<'a>,
+    instruction_info: &AccountInfo,
 ) -> Result<Vec<Instruction>, AudiusProgramError> {
     let mut secp_instructions: Vec<Instruction> = Vec::new();
 
@@ -179,13 +200,15 @@ pub fn get_eth_addresses<'a>(
             return Err(ProgramError::UninitializedAccount);
         }
 
+        is_owner!(*program_id, sender)?;
+
         let generated_sender_key = get_address_pair(
             program_id,
             reward_manager_key,
-            &[
+            [
                 SENDER_SEED_PREFIX.as_ref(),
                 sender_data.eth_address.as_ref(),
-            ],
+            ].concat(),
         )?;
         if generated_sender_key.derive.address != *sender.key {
             return Err(ProgramError::InvalidSeeds);
@@ -231,29 +254,31 @@ pub fn build_verify_secp_transfer(
         move |instructions: Vec<Instruction>, signers: Vec<EthereumAddress>| {
             let mut successful_verifications = 0;
 
-            let mut bot_oracle_message = Vec::new();
-            bot_oracle_message.extend_from_slice(transfer_data.eth_recipient.as_ref());
-            bot_oracle_message.extend_from_slice(b"_");
-            bot_oracle_message.extend_from_slice(transfer_data.amount.to_le_bytes().as_ref());
-            bot_oracle_message.extend_from_slice(b"_");
-            bot_oracle_message.extend_from_slice(transfer_data.id.as_ref());
+            let bot_oracle_message = [
+                transfer_data.eth_recipient.as_ref(),
+                b"_",
+                transfer_data.amount.to_le_bytes().as_ref(),
+                b"_",
+                transfer_data.id.as_ref(),
+            ].concat();
 
-            let mut senders_message = Vec::new();
-            senders_message.extend_from_slice(transfer_data.eth_recipient.as_ref());
-            senders_message.extend_from_slice(b"_");
-            senders_message.extend_from_slice(transfer_data.amount.to_le_bytes().as_ref());
-            senders_message.extend_from_slice(b"_");
-            senders_message.extend_from_slice(transfer_data.id.as_ref());
-            senders_message.extend_from_slice(b"_");
-            senders_message.extend_from_slice(bot_oracle.as_ref());
+            let senders_message = [
+                transfer_data.eth_recipient.as_ref(),
+                b"_",
+                transfer_data.amount.to_le_bytes().as_ref(),
+                b"_",
+                transfer_data.id.as_ref(),
+                b"_",
+                bot_oracle_eth_address.as_ref(),
+            ].concat();
 
-            for instruction in instructions {
+            for instruction in secp_instructions {
                 let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
-                if eth_signer == bot_oracle {
+                if eth_signer == bot_oracle_eth_address {
                     validate_eth_signature(bot_oracle_message.as_ref(), instruction.data.clone())?;
                     successful_verifications += 1;
                 }
-                if signers.contains(&eth_signer) {
+                if senders_eth_addresses.contains(&eth_signer) && eth_signer != bot_oracle_eth_address {
                     validate_eth_signature(senders_message.as_ref(), instruction.data)?;
                     successful_verifications += 1;
                 }
