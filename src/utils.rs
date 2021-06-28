@@ -138,7 +138,7 @@ pub fn create_account_with_seed<'a>(
     account_to_create: &AccountInfo<'a>,
     base: &AccountInfo<'a>,
     reward_manager: &Pubkey,
-    seeds: &[&[u8]],
+    seeds: Vec<u8>,
     required_lamports: u64,
     space: u64,
     owner: &Pubkey,
@@ -151,7 +151,7 @@ pub fn create_account_with_seed<'a>(
             &funder.key,
             &account_to_create.key,
             &base.key,
-            &bs58::encode(seeds.concat()).into_string(),
+            &bs58::encode(seeds).into_string(),
             required_lamports,
             space,
             owner,
@@ -269,16 +269,16 @@ pub fn build_verify_secp_transfer(
                 b"_",
                 transfer_data.id.as_ref(),
                 b"_",
-                bot_oracle_eth_address.as_ref(),
+                bot_oracle.as_ref(),
             ].concat();
 
-            for instruction in secp_instructions {
+            for instruction in instructions {
                 let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
-                if eth_signer == bot_oracle_eth_address {
+                if eth_signer == bot_oracle {
                     validate_eth_signature(bot_oracle_message.as_ref(), instruction.data.clone())?;
                     successful_verifications += 1;
                 }
-                if senders_eth_addresses.contains(&eth_signer) && eth_signer != bot_oracle_eth_address {
+                if signers.contains(&eth_signer) && eth_signer != bot_oracle {
                     validate_eth_signature(senders_message.as_ref(), instruction.data)?;
                     successful_verifications += 1;
                 }

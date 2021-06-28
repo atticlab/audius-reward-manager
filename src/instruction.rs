@@ -227,7 +227,7 @@ where
     let pair = get_address_pair(
         program_id,
         reward_manager,
-        &[SENDER_SEED_PREFIX.as_ref(), &eth_address.as_ref()],
+        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
     )?;
 
     let mut accounts = vec![
@@ -284,7 +284,7 @@ where
     let mut accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(transfer_acc_to_create.base.address, false),
-        AccountMeta::new(*recipient, false),
+        AccountMeta::new(recipient, false),
         AccountMeta::new(*vault_token_account, false),
         AccountMeta::new_readonly(*bot_oracle, false),
         AccountMeta::new(*funder, true),

@@ -241,7 +241,7 @@ impl Processor {
         let pair = get_address_pair(
             program_id,
             reward_manager_info.key,
-            &[SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()],
+            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
         )?;
 
         let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
@@ -319,7 +319,6 @@ impl Processor {
         let vault_token_acc_data = TokenAccount::unpack(&vault_token_account.data.borrow())?;
 
         let generated_recipient_key = claimable_tokens::utils::program::get_address_pair(
-            &claimable_tokens::id(),
             &vault_token_acc_data.mint,
             transfer_data.eth_recipient,
         )?;
@@ -353,7 +352,7 @@ impl Processor {
             transfer_acc_to_create,
             reward_manager_authority,
             reward_manager.key,
-            [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_data.id.as_ref()].concat().as_ref(),
+            [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_data.id.as_ref()].concat(),
             TRANSFER_ACC_BALANCE as u64,
             TRANSFER_ACC_SPACE as u64,
             program_id,
