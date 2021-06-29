@@ -203,8 +203,9 @@ impl Processor {
             return Err(AudiusProgramError::Secp256InstructionMissing.into());
         }
 
+        // NOTE: +1 it's bot oracle
         let secp_instructions =
-            get_secp_instructions(index, expected_signers.len(), instruction_info)?;
+            get_secp_instructions(index, expected_signers.len() + 1, instruction_info)?;
 
         let senders_eth_addresses =
             get_eth_addresses(program_id, reward_manager_info.key, expected_signers)?;

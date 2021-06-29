@@ -284,7 +284,8 @@ pub fn build_verify_secp_transfer(
                 }
             }
 
-            if successful_verifications != signers.len() as u8 {
+            // NOTE: +1 it's bot oracle
+            if successful_verifications != signers.len() + 1 {
                 return Err(AudiusProgramError::SignatureVerificationFailed.into());
             }
 
