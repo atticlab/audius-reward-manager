@@ -23,7 +23,7 @@ use solana_program::{
     system_instruction, sysvar,
     sysvar::Sysvar,
 };
-use std::collections::hash_set::HashSet;
+use std::collections::BTreeSet;
 use spl_token::state::Account as TokenAccount;
 
 /// Sender program account seed
@@ -188,7 +188,7 @@ impl Processor {
         }
 
         // Checks that all operator unique
-        let mut signers_data = HashSet::<EthereumAddress>::new();
+        let mut signers_data = BTreeSet::<EthereumAddress>::new();
         for signer in &expected_signers {
             let s = SenderAccount::try_from_slice(&signer.data.borrow())?;
             if !signers_data.insert(s.operator) {
