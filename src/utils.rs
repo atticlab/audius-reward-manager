@@ -7,16 +7,7 @@ use crate::{
     state::SenderAccount,
 };
 use borsh::BorshDeserialize;
-use solana_program::{
-    account_info::AccountInfo,
-    entrypoint::ProgramResult,
-    instruction::Instruction,
-    program::invoke_signed,
-    program_error::ProgramError,
-    program_pack::IsInitialized,
-    pubkey::{Pubkey, PubkeyError},
-    secp256k1_program, system_instruction, sysvar,
-};
+use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, instruction::Instruction, msg, program::invoke_signed, program_error::ProgramError, program_pack::IsInitialized, pubkey::{Pubkey, PubkeyError}, secp256k1_program, system_instruction, sysvar};
 use std::{collections::BTreeMap, convert::TryInto};
 
 /// Represent compressed ethereum pubkey
@@ -235,10 +226,12 @@ pub fn validate_eth_signature(
     expected_message: &[u8],
     secp_instruction_data: Vec<u8>,
 ) -> Result<(), ProgramError> {
+    use std::str;
     //NOTE: meta (12) + address (20) + signature (65) = 97
     let message_data_offset = 97;
     let instruction_message = secp_instruction_data[message_data_offset..].to_vec();
     if instruction_message != *expected_message {
+        msg!("msg: {} exp: {}", str::from_utf8(&instruction_message).unwrap(), str::from_utf8(expected_message).unwrap());
         return Err(AudiusProgramError::SignatureVerificationFailed.into());
     }
 
@@ -300,12 +293,12 @@ pub fn build_verify_secp_transfer(
 
             for instruction in instructions {
                 let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
-                check_signer(&mut checkmap, &eth_signer)?;
                 if eth_signer == bot_oracle {
                     validate_eth_signature(bot_oracle_message.as_ref(), instruction.data.clone())?;
                     successful_verifications += 1;
                 }
-                if signers.contains(&eth_signer) && eth_signer != bot_oracle {
+                if signers.contains(&eth_signer) {
+                    check_signer(&mut checkmap, &eth_signer)?;
                     validate_eth_signature(senders_message.as_ref(), instruction.data)?;
                     successful_verifications += 1;
                 }
