@@ -24,7 +24,6 @@ use solana_program::{
     sysvar::Sysvar,
 };
 use spl_token::state::Account as TokenAccount;
-use std::collections::BTreeSet;
 
 /// Sender program account seed
 pub const SENDER_SEED_PREFIX: &str = "S_";
@@ -186,20 +185,6 @@ impl Processor {
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
         if expected_signers.len() < reward_manager.min_votes as _ {
             return Err(AudiusProgramError::NotEnoughSigners.into());
-        }
-
-        // Checks that all operator unique
-        let mut signers_data = BTreeSet::<EthereumAddress>::new();
-        for signer in &expected_signers {
-            let s = SenderAccount::try_from_slice(&signer.data.borrow())?;
-
-            if !signers_data.insert(s.operator) {
-                return Err(AudiusProgramError::OperatorCollision.into());
-            }
-
-            if s.reward_manager != *reward_manager_info.key {
-                return Err(AudiusProgramError::WrongRewardManagerKey.into());
-            }
         }
 
         let index = sysvar::instructions::load_current_index(&instruction_info.data.borrow());

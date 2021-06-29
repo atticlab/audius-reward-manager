@@ -17,6 +17,7 @@ use solana_program::{
     pubkey::{Pubkey, PubkeyError},
     secp256k1_program, system_instruction, sysvar,
 };
+use std::collections::BTreeSet;
 use std::{collections::BTreeMap, convert::TryInto};
 
 /// Represent compressed ethereum pubkey
@@ -190,34 +191,38 @@ pub fn get_secp_instructions(
 pub fn get_eth_addresses<'a>(
     program_id: &Pubkey,
     reward_manager_key: &Pubkey,
-    senders: Vec<&AccountInfo<'a>>,
+    signers: Vec<&AccountInfo<'a>>,
 ) -> Result<Vec<EthereumAddress>, ProgramError> {
     let mut senders_eth_addresses: Vec<EthereumAddress> = Vec::new();
+    let mut operators = BTreeSet::<EthereumAddress>::new();
 
-    for sender in senders {
-        let sender_data = SenderAccount::try_from_slice(&sender.data.borrow())?;
-        if !sender_data.is_initialized() {
+    for signer in signers {
+        let signer_data = SenderAccount::try_from_slice(&signer.data.borrow())?;
+        if !signer_data.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
         }
 
-        is_owner!(*program_id, sender)?;
+        is_owner!(*program_id, signer)?;
 
         let generated_sender_key = get_address_pair(
             program_id,
             reward_manager_key,
             [
                 SENDER_SEED_PREFIX.as_ref(),
-                sender_data.eth_address.as_ref(),
+                signer_data.eth_address.as_ref(),
             ]
             .concat(),
         )?;
-        if generated_sender_key.derive.address != *sender.key {
+        if generated_sender_key.derive.address != *signer.key {
             return Err(ProgramError::InvalidSeeds);
         }
-        if senders_eth_addresses.contains(&sender_data.eth_address) {
+        if senders_eth_addresses.contains(&signer_data.eth_address) {
             return Err(AudiusProgramError::RepeatedSenders.into());
         }
-        senders_eth_addresses.push(sender_data.eth_address);
+        if !operators.insert(signer_data.operator) {
+            return Err(AudiusProgramError::OperatorCollision.into());
+        }
+        senders_eth_addresses.push(signer_data.eth_address);
     }
 
     Ok(senders_eth_addresses)
