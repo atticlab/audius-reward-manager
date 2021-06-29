@@ -208,7 +208,8 @@ pub fn get_eth_addresses<'a>(
             [
                 SENDER_SEED_PREFIX.as_ref(),
                 sender_data.eth_address.as_ref(),
-            ].concat(),
+            ]
+            .concat(),
         )?;
         if generated_sender_key.derive.address != *sender.key {
             return Err(ProgramError::InvalidSeeds);
@@ -260,7 +261,8 @@ pub fn build_verify_secp_transfer(
                 transfer_data.amount.to_le_bytes().as_ref(),
                 b"_",
                 transfer_data.id.as_ref(),
-            ].concat();
+            ]
+            .concat();
 
             let senders_message = [
                 transfer_data.eth_recipient.as_ref(),
@@ -270,7 +272,8 @@ pub fn build_verify_secp_transfer(
                 transfer_data.id.as_ref(),
                 b"_",
                 bot_oracle.as_ref(),
-            ].concat();
+            ]
+            .concat();
 
             for instruction in instructions {
                 let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());

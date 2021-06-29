@@ -4,7 +4,7 @@ use audius_reward_manager::{
     instruction,
     processor::SENDER_SEED_PREFIX,
     state::{RewardManager, SenderAccount},
-    utils::{EthereumAddress, get_address_pair},
+    utils::{get_address_pair, EthereumAddress},
 };
 use borsh::BorshSerialize;
 use rand::{thread_rng, Rng};

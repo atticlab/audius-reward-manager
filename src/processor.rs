@@ -3,9 +3,9 @@
 use crate::{
     error::AudiusProgramError,
     instruction::{Instructions, Transfer},
+    is_owner,
     state::{RewardManager, SenderAccount},
     utils::*,
-    is_owner,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -23,8 +23,8 @@ use solana_program::{
     system_instruction, sysvar,
     sysvar::Sysvar,
 };
-use std::collections::BTreeSet;
 use spl_token::state::Account as TokenAccount;
+use std::collections::BTreeSet;
 
 /// Sender program account seed
 pub const SENDER_SEED_PREFIX: &str = "S_";
@@ -300,7 +300,11 @@ impl Processor {
         let generated_bot_oracle_key = get_address_pair(
             program_id,
             reward_manager.key,
-            [SENDER_SEED_PREFIX.as_ref(), bot_oracle_data.eth_address.as_ref()].concat(),
+            [
+                SENDER_SEED_PREFIX.as_ref(),
+                bot_oracle_data.eth_address.as_ref(),
+            ]
+            .concat(),
         )?;
 
         if generated_bot_oracle_key.derive.address != *bot_oracle.key {
@@ -310,7 +314,11 @@ impl Processor {
         let generated_transfer_acc_to_create = get_address_pair(
             program_id,
             reward_manager.key,
-            [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_data.id.as_ref()].concat(),
+            [
+                TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+                transfer_data.id.as_ref(),
+            ]
+            .concat(),
         )?;
 
         if generated_transfer_acc_to_create.derive.address != *transfer_acc_to_create.key {
@@ -354,7 +362,11 @@ impl Processor {
             transfer_acc_to_create,
             reward_manager_authority,
             reward_manager.key,
-            [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_data.id.as_ref()].concat(),
+            [
+                TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+                transfer_data.id.as_ref(),
+            ]
+            .concat(),
             TRANSFER_ACC_BALANCE as u64,
             TRANSFER_ACC_SPACE as u64,
             program_id,

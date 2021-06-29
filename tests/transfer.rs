@@ -1,25 +1,26 @@
 #![cfg(feature = "test-bpf")]
 mod utils;
-use audius_reward_manager::{instruction, processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX, TRANSFER_ACC_BALANCE, TRANSFER_ACC_SPACE}, utils::{EthereumAddress, get_address_pair}};
+use audius_reward_manager::{
+    instruction,
+    processor::{
+        SENDER_SEED_PREFIX, TRANSFER_ACC_BALANCE, TRANSFER_ACC_SPACE, TRANSFER_SEED_PREFIX,
+    },
+    utils::{get_address_pair, EthereumAddress},
+};
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
-use solana_program::{program_pack::Pack, pubkey::Pubkey};
+use solana_program::{program_pack::Pack};
 use solana_program_test::*;
 use solana_sdk::{
-    secp256k1_instruction::*, signature::Keypair, signer::Signer, transaction::Transaction,};
+    secp256k1_instruction::*, signature::Keypair, signer::Signer, transaction::Transaction,
+};
 use utils::*;
-use solana_program_test::processor;
 
 #[tokio::test]
 async fn transfer_test() {
     let mut program_test = program_test();
     // program_test.prefer_bpf(false);
-    program_test.add_program(
-        "claimable_tokens", 
-        claimable_tokens::id(), 
-        None,
-    );
-    let rng = thread_rng();
+    program_test.add_program("claimable_tokens", claimable_tokens::id(), None);
 
     let mut context = program_test.start_with_context().await;
 
@@ -126,7 +127,8 @@ async fn transfer_test() {
         transfer_id.as_ref(),
         b"_",
         eth_address_2.as_ref(),
-    ].concat();
+    ]
+    .concat();
 
     let bot_oracle_message = [
         recipient_eth_key.as_ref(),
@@ -134,7 +136,8 @@ async fn transfer_test() {
         tokens_amount.to_le_bytes().as_ref(),
         b"_",
         transfer_id.as_ref(),
-    ].concat();
+    ]
+    .concat();
 
     let sender_secp256_program_instruction =
         new_secp256k1_instruction_2_0(&sender_priv_key, senders_message.as_ref(), 0);
@@ -171,10 +174,17 @@ async fn transfer_test() {
     let transfer_acc_created = get_address_pair(
         &audius_reward_manager::id(),
         &reward_manager.pubkey(),
-        [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_id.as_ref()].concat(),
-    ).unwrap();
+        [
+            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+            transfer_id.as_ref(),
+        ]
+        .concat(),
+    )
+    .unwrap();
 
-    let transfer_acc_data = get_account(&mut context, &transfer_acc_created.derive.address).await.unwrap();
+    let transfer_acc_data = get_account(&mut context, &transfer_acc_created.derive.address)
+        .await
+        .unwrap();
 
     assert_eq!(transfer_acc_data.lamports, TRANSFER_ACC_BALANCE as u64);
     assert_eq!(transfer_acc_data.data.len() as u8, TRANSFER_ACC_SPACE);

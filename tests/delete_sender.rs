@@ -4,7 +4,7 @@ use audius_reward_manager::{
     instruction,
     processor::SENDER_SEED_PREFIX,
     state::{RewardManager, SenderAccount},
-    utils::{EthereumAddress, get_address_pair},
+    utils::{get_address_pair, EthereumAddress},
 };
 use borsh::BorshSerialize;
 use rand::{thread_rng, Rng};
@@ -17,7 +17,7 @@ use utils::program_test;
 async fn success() {
     let mut program_test = program_test();
     let mut rng = thread_rng();
-    
+
     let token_account = Pubkey::new_unique();
     let reward_manager = Pubkey::new_unique();
     let manager_account = Keypair::new();
