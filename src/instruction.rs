@@ -233,7 +233,7 @@ where
     let mut accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(pair.base.address, false),
-        AccountMeta::new(*funder, false),
+        AccountMeta::new(*funder, true),
         AccountMeta::new(pair.derive.address, false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),

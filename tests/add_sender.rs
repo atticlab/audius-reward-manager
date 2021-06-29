@@ -30,7 +30,6 @@ async fn success() {
 
     let reward_manager = Keypair::new();
     let manager_account = Keypair::new();
-    let funder = Pubkey::new_unique();
     let eth_address: EthereumAddress = rng.gen();
     let operator: EthereumAddress = rng.gen();
     let keys: [[u8; 32]; 3] = rng.gen();
@@ -113,7 +112,7 @@ async fn success() {
         instruction::add_sender(
             &audius_reward_manager::id(),
             &reward_manager.pubkey(),
-            &funder,
+            &context.payer.pubkey(),
             eth_address,
             operator,
             &signers,
