@@ -17,7 +17,7 @@ use solana_program::{
     pubkey::{Pubkey, PubkeyError},
     secp256k1_program, system_instruction, sysvar,
 };
-use std::convert::TryInto;
+use std::{collections::BTreeMap, convert::TryInto};
 
 /// Represent compressed ethereum pubkey
 pub type EthereumAddress = [u8; 20];
@@ -247,6 +247,27 @@ pub fn validate_eth_signature(
 
 pub trait VerifierFn = FnOnce(Vec<Instruction>, Vec<EthereumAddress>) -> ProgramResult;
 
+fn vec_into_checkmap(vec: Vec<EthereumAddress>) -> BTreeMap<EthereumAddress, bool> {
+    let mut map = BTreeMap::new();
+    for item in vec {
+        map.insert(item, false);
+    }
+    map
+}
+
+fn check_signer(checkmap: &mut BTreeMap<EthereumAddress, bool>, eth_signer: &EthereumAddress) -> ProgramResult {
+    if let Some(val) = checkmap.get_mut(eth_signer) {
+        if !*val {
+            *val = true;
+        } else {
+            return Err(AudiusProgramError::SignCollission.into());
+        }  
+    } else {
+        return Err(AudiusProgramError::WrongSigner.into());
+    }
+    Ok(())
+}
+
 pub fn build_verify_secp_transfer(
     bot_oracle: EthereumAddress,
     transfer_data: Transfer,
@@ -275,8 +296,11 @@ pub fn build_verify_secp_transfer(
             ]
             .concat();
 
+            let mut checkmap = vec_into_checkmap(signers);
+
             for instruction in instructions {
                 let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
+                check_signer(&mut checkmap, &eth_signer)?;
                 if eth_signer == bot_oracle {
                     validate_eth_signature(bot_oracle_message.as_ref(), instruction.data.clone())?;
                     successful_verifications += 1;
@@ -302,9 +326,13 @@ pub fn build_verify_secp_add_sender(
     new_sender: EthereumAddress,
 ) -> impl VerifierFn {
     return Box::new(
-        move |instructions: Vec<Instruction>, _signers: Vec<EthereumAddress>| {
+        move |instructions: Vec<Instruction>, signers: Vec<EthereumAddress>| {
+            let mut checkmap = vec_into_checkmap(signers);
+
             let expected_message = [reward_manager_key.as_ref(), new_sender.as_ref()].concat();
             for instruction in instructions {
+                let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
+                check_signer(&mut checkmap, &eth_signer)?;
                 validate_eth_signature(expected_message.as_ref(), instruction.data)?;
             }
 

@@ -13,6 +13,14 @@ use thiserror::Error;
 /// Errors that may be returned by the Template program.
 #[derive(Clone, Debug, Eq, Error, FromPrimitive, PartialEq)]
 pub enum AudiusProgramError {
+    /// Signature with an already met principal
+    #[error("Signature with an already met principal")]
+    SignCollission,
+
+    /// Unexpected signer met
+    #[error("Unexpected signer met")]
+    WrongSigner,
+
     /// Wrong sender account
     #[error("Incorect sender account")]
     IncorectSenderAccount,
@@ -29,9 +37,9 @@ pub enum AudiusProgramError {
     #[error("Wrong recipient Solana key")]
     WrongRecipientKey,
 
-    /// Isn't enough senders keys
-    #[error("Isn't enough senders keys")]
-    NotEnoughSenders,
+    /// Isn't enough signers keys
+    #[error("Isn't enough signers keys")]
+    NotEnoughSigners,
 
     /// Secp256 instruction missing
     #[error("Secp256 instruction missing")]
