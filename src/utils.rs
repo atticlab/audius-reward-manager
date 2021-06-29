@@ -247,10 +247,10 @@ pub fn validate_eth_signature(
 
 pub trait VerifierFn = FnOnce(Vec<Instruction>, Vec<EthereumAddress>) -> ProgramResult;
 
-fn vec_into_checkmap(vec: Vec<EthereumAddress>) -> BTreeMap<EthereumAddress, bool> {
+fn vec_into_checkmap(vec: &Vec<EthereumAddress>) -> BTreeMap<EthereumAddress, bool> {
     let mut map = BTreeMap::new();
     for item in vec {
-        map.insert(item, false);
+        map.insert(*item, false);
     }
     map
 }
@@ -296,7 +296,7 @@ pub fn build_verify_secp_transfer(
             ]
             .concat();
 
-            let mut checkmap = vec_into_checkmap(signers);
+            let mut checkmap = vec_into_checkmap(&signers);
 
             for instruction in instructions {
                 let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
@@ -327,7 +327,7 @@ pub fn build_verify_secp_add_sender(
 ) -> impl VerifierFn {
     return Box::new(
         move |instructions: Vec<Instruction>, signers: Vec<EthereumAddress>| {
-            let mut checkmap = vec_into_checkmap(signers);
+            let mut checkmap = vec_into_checkmap(&signers);
 
             let expected_message = [reward_manager_key.as_ref(), new_sender.as_ref()].concat();
             for instruction in instructions {

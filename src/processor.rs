@@ -180,6 +180,7 @@ impl Processor {
         reward_manager_info: &AccountInfo,
         instruction_info: &AccountInfo,
         expected_signers: Vec<&AccountInfo>,
+        extraction_depth: usize,
         verifier: impl FnOnce(Vec<Instruction>, Vec<EthereumAddress>) -> ProgramResult,
     ) -> ProgramResult {
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
@@ -209,9 +210,8 @@ impl Processor {
             return Err(AudiusProgramError::Secp256InstructionMissing.into());
         }
 
-        // NOTE: +1 it's bot oracle
         let secp_instructions =
-            get_secp_instructions(index, expected_signers.len() + 1, instruction_info)?;
+            get_secp_instructions(index, extraction_depth, instruction_info)?;
 
         let senders_eth_addresses =
             get_eth_addresses(program_id, reward_manager_info.key, expected_signers)?;
@@ -241,7 +241,8 @@ impl Processor {
             program_id,
             &reward_manager_info,
             instructions_info,
-            signers_info,
+            signers_info.clone(),
+            signers_info.len(),
             verifier,
         )?;
 
@@ -349,7 +350,9 @@ impl Processor {
             program_id,
             reward_manager,
             instruction_info,
-            senders,
+            senders.clone(),
+            // NOTE: +1 it's bot oracle
+            senders.len() + 1,
             verifier,
         )?;
 
