@@ -13,11 +13,11 @@ use solana_program_test::processor;
 #[tokio::test]
 async fn transfer_test() {
     let mut program_test = program_test();
-    program_test.prefer_bpf(false);
+    // program_test.prefer_bpf(false);
     program_test.add_program(
         "claimable_tokens", 
         claimable_tokens::id(), 
-        processor!(claimable_tokens::processor::Processor::process_instruction),
+        None,
     );
     let rng = thread_rng();
 
@@ -61,7 +61,7 @@ async fn transfer_test() {
     let first_sender = get_address_pair(
         &audius_reward_manager::id(),
         &reward_manager.pubkey(),
-        [eth_address_1.as_ref(), SENDER_SEED_PREFIX.as_ref()].concat(),
+        [SENDER_SEED_PREFIX.as_ref(), eth_address_1.as_ref()].concat(),
     )
     .unwrap();
     create_sender(
@@ -83,7 +83,7 @@ async fn transfer_test() {
     let second_sender = get_address_pair(
         &audius_reward_manager::id(),
         &reward_manager.pubkey(),
-        [eth_address_2.as_ref(), SENDER_SEED_PREFIX.as_ref()].concat(),
+        [SENDER_SEED_PREFIX.as_ref(), eth_address_2.as_ref()].concat(),
     )
     .unwrap();
     create_sender(
@@ -148,9 +148,9 @@ async fn transfer_test() {
             instruction::transfer(
                 &audius_reward_manager::id(),
                 &reward_manager.pubkey(),
-                todo!(), // &recipient_sol_key.derive.address,
-                todo!(), // &token_account.pubkey(),
-                         // &second_sender.derive.address,
+                &recipient_sol_key.derive.address,
+                &token_account.pubkey(),
+                &second_sender.derive.address,
                 &context.payer.pubkey(),
                 vec![first_sender.derive.address],
                 instruction::Transfer {

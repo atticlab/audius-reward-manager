@@ -254,6 +254,7 @@ where
 pub fn transfer<I>(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
+    recipient: &Pubkey,
     vault_token_account: &Pubkey,
     bot_oracle: &Pubkey,
     funder: &Pubkey,
@@ -263,11 +264,6 @@ pub fn transfer<I>(
 where
     I: IntoIterator<Item = Pubkey>,
 {
-    let (recipient, _) = Pubkey::find_program_address(
-        &[reward_manager.as_ref(), params.eth_recipient.as_ref()],
-        program_id,
-    );
-
     let data = Instructions::Transfer {
         amount: params.amount,
         id: params.id.clone(),
@@ -284,7 +280,7 @@ where
     let mut accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(transfer_acc_to_create.base.address, false),
-        AccountMeta::new(recipient, false),
+        AccountMeta::new(*recipient, false),
         AccountMeta::new(*vault_token_account, false),
         AccountMeta::new_readonly(*bot_oracle, false),
         AccountMeta::new(*funder, true),
@@ -295,7 +291,7 @@ where
     ];
     let iter = senders
         .into_iter()
-        .map(|i| AccountMeta::new_readonly(i, true));
+        .map(|i| AccountMeta::new_readonly(i, false));
     accounts.extend(iter);
 
     Ok(Instruction {
