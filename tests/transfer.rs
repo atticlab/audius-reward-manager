@@ -9,7 +9,7 @@ use audius_reward_manager::{
 };
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
-use solana_program::{program_pack::Pack};
+use solana_program::program_pack::Pack;
 use solana_program_test::*;
 use solana_sdk::{
     secp256k1_instruction::*, signature::Keypair, signer::Signer, transaction::Transaction,

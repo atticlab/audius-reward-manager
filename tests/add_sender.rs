@@ -10,16 +10,14 @@ use audius_reward_manager::{
 };
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
+use solana_program::program_pack::Pack;
 use solana_program::{instruction::Instruction, pubkey::Pubkey};
 use solana_program_test::*;
 use solana_sdk::{
-    secp256k1_instruction::{construct_eth_pubkey},
-    signature::Keypair,
-    signer::Signer,
+    secp256k1_instruction::construct_eth_pubkey, signature::Keypair, signer::Signer,
     transaction::Transaction,
 };
 use utils::*;
-use solana_program::program_pack::Pack;
 
 #[tokio::test]
 async fn success() {
@@ -41,12 +39,13 @@ async fn success() {
         let sender_priv_key = SecretKey::parse(item.1).unwrap();
         let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
         let eth_address = construct_eth_pubkey(&secp_pubkey);
-        
+
         let pair = get_address_pair(
             &audius_reward_manager::id(),
             &reward_manager.pubkey(),
             [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-        ).unwrap();
+        )
+        .unwrap();
 
         signers[item.0] = pair.derive.address;
     }
@@ -76,16 +75,16 @@ async fn success() {
         &token_account,
         &mint.pubkey(),
         &manager_account.pubkey(),
-        1 as u8,
+        3 as u8,
     )
     .await;
 
-    // Create senders 
+    // Create senders
     for key in &keys {
         let sender_priv_key = SecretKey::parse(&key).unwrap();
         let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
         let eth_address = construct_eth_pubkey(&secp_pubkey);
-        let operator: EthereumAddress = rng.gen(); 
+        let operator: EthereumAddress = rng.gen();
         create_sender(
             &mut context,
             &reward_manager.pubkey(),
@@ -99,7 +98,11 @@ async fn success() {
     let mut instructions = Vec::<Instruction>::new();
 
     // Insert signs instructions
-    let message = [reward_manager.pubkey().as_ref(), pair.derive.address.as_ref()].concat();
+    let message = [
+        reward_manager.pubkey().as_ref(),
+        pair.derive.address.as_ref(),
+    ]
+    .concat();
     for item in keys.iter().enumerate() {
         let priv_key = SecretKey::parse(item.1).unwrap();
         let inst = new_secp256k1_instruction_2_0(&priv_key, message.as_ref(), item.0 as _);

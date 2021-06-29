@@ -240,7 +240,7 @@ where
     ];
     let iter = signers
         .into_iter()
-        .map(|i| AccountMeta::new_readonly(*i, true));
+        .map(|i| AccountMeta::new_readonly(*i, false));
     accounts.extend(iter);
 
     Ok(Instruction {
