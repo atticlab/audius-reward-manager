@@ -19,7 +19,6 @@ use utils::*;
 #[tokio::test]
 async fn transfer_test() {
     let mut program_test = program_test();
-    // program_test.prefer_bpf(false);
     program_test.add_program("claimable_tokens", claimable_tokens::id(), None);
 
     let mut context = program_test.start_with_context().await;

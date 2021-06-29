@@ -18,14 +18,19 @@ use solana_sdk::{
     signer::Signer,
     transaction::Transaction,
 };
-use utils::{create_sender, program_test, new_secp256k1_instruction_2_0};
+use utils::*;
+use solana_program::program_pack::Pack;
 
 #[tokio::test]
 async fn success() {
     let program_test = program_test();
     let mut rng = thread_rng();
 
-    let reward_manager = Pubkey::new_unique();
+    let mint = Keypair::new();
+    let mint_authority = Keypair::new();
+    let token_account = Keypair::new();
+
+    let reward_manager = Keypair::new();
     let manager_account = Keypair::new();
     let funder = Pubkey::new_unique();
     let eth_address: EthereumAddress = rng.gen();
@@ -33,10 +38,14 @@ async fn success() {
     let keys: [[u8; 32]; 3] = rng.gen();
     let mut signers: [Pubkey; 3] = unsafe { MaybeUninit::zeroed().assume_init() };
     for item in keys.iter().enumerate() {
+        let sender_priv_key = SecretKey::parse(item.1).unwrap();
+        let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
+        let eth_address = construct_eth_pubkey(&secp_pubkey);
+        
         let pair = get_address_pair(
             &audius_reward_manager::id(),
-            &reward_manager,
-            [SENDER_SEED_PREFIX.as_ref(), item.1.as_ref()].concat(),
+            &reward_manager.pubkey(),
+            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
         ).unwrap();
 
         signers[item.0] = pair.derive.address;
@@ -44,13 +53,32 @@ async fn success() {
 
     let pair = get_address_pair(
         &audius_reward_manager::id(),
-        &reward_manager,
+        &reward_manager.pubkey(),
         [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
     )
     .unwrap();
 
     let mut context = program_test.start_with_context().await;
-    let mut instructions = Vec::<Instruction>::new();
+    let rent = context.banks_client.get_rent().await.unwrap();
+
+    create_mint(
+        &mut context,
+        &mint,
+        rent.minimum_balance(spl_token::state::Mint::LEN),
+        &mint_authority.pubkey(),
+    )
+    .await
+    .unwrap();
+
+    init_reward_manager(
+        &mut context,
+        &reward_manager,
+        &token_account,
+        &mint.pubkey(),
+        &manager_account.pubkey(),
+        1 as u8,
+    )
+    .await;
 
     // Create senders 
     for key in &keys {
@@ -60,7 +88,7 @@ async fn success() {
         let operator: EthereumAddress = rng.gen(); 
         create_sender(
             &mut context,
-            &reward_manager,
+            &reward_manager.pubkey(),
             &manager_account,
             eth_address,
             operator,
@@ -68,8 +96,10 @@ async fn success() {
         .await;
     }
 
+    let mut instructions = Vec::<Instruction>::new();
+
     // Insert signs instructions
-    let message = [reward_manager.as_ref(), pair.derive.address.as_ref()].concat();
+    let message = [reward_manager.pubkey().as_ref(), pair.derive.address.as_ref()].concat();
     for item in keys.iter().enumerate() {
         let priv_key = SecretKey::parse(item.1).unwrap();
         let inst = new_secp256k1_instruction_2_0(&priv_key, message.as_ref(), item.0 as _);
@@ -79,7 +109,7 @@ async fn success() {
     instructions.push(
         instruction::add_sender(
             &audius_reward_manager::id(),
-            &reward_manager,
+            &reward_manager.pubkey(),
             &funder,
             eth_address,
             operator,
@@ -97,7 +127,7 @@ async fn success() {
     context.banks_client.process_transaction(tx).await.unwrap();
 
     assert_eq!(
-        SenderAccount::new(reward_manager, eth_address, operator),
+        SenderAccount::new(reward_manager.pubkey(), eth_address, operator),
         context
             .banks_client
             .get_account_data_with_borsh(pair.derive.address)
