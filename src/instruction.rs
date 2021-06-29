@@ -237,6 +237,7 @@ where
         AccountMeta::new(pair.derive.address, false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
+        AccountMeta::new_readonly(system_program::id(), false),
     ];
     let iter = signers
         .into_iter()

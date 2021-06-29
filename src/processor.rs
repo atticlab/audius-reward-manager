@@ -471,6 +471,7 @@ impl Processor {
                 let new_sender = next_account_info(account_info_iter)?;
                 let instructions_info = next_account_info(account_info_iter)?;
                 let rent = next_account_info(account_info_iter)?;
+                let _system_program = next_account_info(account_info_iter)?;
                 let signers = account_info_iter.collect::<Vec<&AccountInfo>>();
 
                 Self::process_add_sender(
