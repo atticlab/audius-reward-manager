@@ -100,7 +100,7 @@ async fn success() {
     // Insert signs instructions
     let message = [
         reward_manager.pubkey().as_ref(),
-        pair.derive.address.as_ref(),
+        eth_address.as_ref(),
     ]
     .concat();
     for item in keys.iter().enumerate() {
