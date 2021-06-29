@@ -7,7 +7,16 @@ use crate::{
     state::SenderAccount,
 };
 use borsh::BorshDeserialize;
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, instruction::Instruction, program::invoke_signed, program_error::ProgramError, program_pack::IsInitialized, pubkey::{Pubkey, PubkeyError}, secp256k1_program, system_instruction, sysvar};
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    instruction::Instruction,
+    program::invoke_signed,
+    program_error::ProgramError,
+    program_pack::IsInitialized,
+    pubkey::{Pubkey, PubkeyError},
+    secp256k1_program, system_instruction, sysvar,
+};
 use std::{collections::BTreeMap, convert::TryInto};
 
 /// Represent compressed ethereum pubkey
@@ -246,13 +255,16 @@ fn vec_into_checkmap(vec: &Vec<EthereumAddress>) -> BTreeMap<EthereumAddress, bo
     map
 }
 
-fn check_signer(checkmap: &mut BTreeMap<EthereumAddress, bool>, eth_signer: &EthereumAddress) -> ProgramResult {
+fn check_signer(
+    checkmap: &mut BTreeMap<EthereumAddress, bool>,
+    eth_signer: &EthereumAddress,
+) -> ProgramResult {
     if let Some(val) = checkmap.get_mut(eth_signer) {
         if !*val {
             *val = true;
         } else {
             return Err(AudiusProgramError::SignCollission.into());
-        }  
+        }
     } else {
         return Err(AudiusProgramError::WrongSigner.into());
     }

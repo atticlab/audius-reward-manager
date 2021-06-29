@@ -2,7 +2,7 @@
 
 use crate::{
     error::AudiusProgramError,
-    instruction::{Instructions, Transfer},
+    instruction::{AddSender, CreateSender, InitRewardManager, Instructions, Transfer},
     is_owner,
     state::{RewardManager, SenderAccount},
     utils::*,
@@ -192,7 +192,7 @@ impl Processor {
         let mut signers_data = BTreeSet::<EthereumAddress>::new();
         for signer in &expected_signers {
             let s = SenderAccount::try_from_slice(&signer.data.borrow())?;
-            
+
             if !signers_data.insert(s.operator) {
                 return Err(AudiusProgramError::OperatorCollision.into());
             }
@@ -201,7 +201,6 @@ impl Processor {
                 return Err(AudiusProgramError::WrongRewardManagerKey.into());
             }
         }
-        
 
         let index = sysvar::instructions::load_current_index(&instruction_info.data.borrow());
         // instruction can't be first in transaction
@@ -210,8 +209,7 @@ impl Processor {
             return Err(AudiusProgramError::Secp256InstructionMissing.into());
         }
 
-        let secp_instructions =
-            get_secp_instructions(index, extraction_depth, instruction_info)?;
+        let secp_instructions = get_secp_instructions(index, extraction_depth, instruction_info)?;
 
         let senders_eth_addresses =
             get_eth_addresses(program_id, reward_manager_info.key, expected_signers)?;
@@ -391,7 +389,7 @@ impl Processor {
         let instruction = Instructions::try_from_slice(input)?;
         let account_info_iter = &mut accounts.iter();
         match instruction {
-            Instructions::InitRewardManager { min_votes } => {
+            Instructions::InitRewardManager(InitRewardManager { min_votes }) => {
                 msg!("Instruction: InitRewardManager");
 
                 let reward_manager = next_account_info(account_info_iter)?;
@@ -414,10 +412,10 @@ impl Processor {
                     min_votes,
                 )
             }
-            Instructions::CreateSender {
+            Instructions::CreateSender(CreateSender {
                 eth_address,
                 operator,
-            } => {
+            }) => {
                 msg!("Instruction: CreateSender");
 
                 let reward_manager = next_account_info(account_info_iter)?;
@@ -459,10 +457,10 @@ impl Processor {
                     sys_prog,
                 )
             }
-            Instructions::AddSender {
+            Instructions::AddSender(AddSender {
                 eth_address,
                 operator,
-            } => {
+            }) => {
                 msg!("Instruction: AddSender");
 
                 let reward_manager = next_account_info(account_info_iter)?;
@@ -487,11 +485,11 @@ impl Processor {
                     operator,
                 )
             }
-            Instructions::Transfer {
+            Instructions::Transfer(Transfer {
                 amount,
                 id,
                 eth_recipient,
-            } => {
+            }) => {
                 msg!("Instruction: Transfer");
 
                 let reward_manager = next_account_info(account_info_iter)?;

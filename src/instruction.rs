@@ -12,6 +12,32 @@ use crate::{
     processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX},
     utils::{get_address_pair, get_base_address, EthereumAddress},
 };
+
+/// `InitRewardManager` instruction parameters
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+pub struct InitRewardManager {
+    /// Number of signer votes required for sending rewards
+    pub min_votes: u8,
+}
+
+/// `CreateSender` instruction parameters
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+pub struct CreateSender {
+    /// Ethereum address
+    pub eth_address: EthereumAddress,
+    /// Sender operator
+    pub operator: EthereumAddress,
+}
+
+/// `AddSender` instruction parameters
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+pub struct AddSender {
+    /// Ethereum address
+    pub eth_address: EthereumAddress,
+    /// Sender operator
+    pub operator: EthereumAddress,
+}
+
 /// `Transfer` instruction parameters
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub struct Transfer {
@@ -35,10 +61,7 @@ pub enum Instructions {
     ///   4. `[]`  `Reward Manager` authority.
     ///   5. `[]`  Token program
     ///   6. `[]`  Rent sysvar
-    InitRewardManager {
-        /// Number of signer votes required for sending rewards
-        min_votes: u8,
-    },
+    InitRewardManager(InitRewardManager),
 
     ///   Admin method creating new authorized sender
     ///
@@ -49,12 +72,7 @@ pub enum Instructions {
     ///   4. `[]`  Addidable sender
     ///   5. `[]`  System program id
     ///   6. `[]`  Rent sysvar
-    CreateSender {
-        /// Ethereum address
-        eth_address: EthereumAddress,
-        /// Sender operator
-        operator: EthereumAddress,
-    },
+    CreateSender(CreateSender),
 
     ///   Admin method removing sender
     ///  
@@ -74,12 +92,7 @@ pub enum Instructions {
     /// 4. `[r]`  old_sender_0
     /// ... Bunch of old senders which prove adding new one
     /// n. `[r]`  old_sender_n
-    AddSender {
-        /// Ethereum address
-        eth_address: EthereumAddress,
-        /// Sender operator
-        operator: EthereumAddress,
-    },
+    AddSender(AddSender),
 
     ///   Transfer tokens to pointed receiver
     ///
@@ -96,14 +109,7 @@ pub enum Instructions {
     ///   10. `[]` Senders
     ///   ...
     ///   n. `[]`
-    Transfer {
-        /// Amount to transfer
-        amount: u64,
-        /// ID generated on backend
-        id: String,
-        /// Recipient's Eth address
-        eth_recipient: EthereumAddress,
-    },
+    Transfer(Transfer),
 }
 
 /// Create `InitRewardManager` instruction
@@ -115,7 +121,7 @@ pub fn init(
     manager: &Pubkey,
     min_votes: u8,
 ) -> Result<Instruction, ProgramError> {
-    let init_data = Instructions::InitRewardManager { min_votes };
+    let init_data = Instructions::InitRewardManager(InitRewardManager { min_votes });
     let data = init_data.try_to_vec()?;
 
     let (base, _) = get_base_address(program_id, reward_manager);
@@ -145,10 +151,10 @@ pub fn create_sender(
     eth_address: EthereumAddress,
     operator: EthereumAddress,
 ) -> Result<Instruction, ProgramError> {
-    let create_data = Instructions::CreateSender {
+    let create_data = Instructions::CreateSender(CreateSender {
         eth_address,
         operator,
-    };
+    });
     let data = create_data.try_to_vec()?;
 
     let pair = get_address_pair(
@@ -218,10 +224,10 @@ pub fn add_sender<'a, I>(
 where
     I: IntoIterator<Item = &'a Pubkey>,
 {
-    let data = Instructions::AddSender {
+    let data = Instructions::AddSender(AddSender {
         eth_address,
         operator,
-    }
+    })
     .try_to_vec()?;
 
     let pair = get_address_pair(
@@ -265,11 +271,11 @@ pub fn transfer<I>(
 where
     I: IntoIterator<Item = Pubkey>,
 {
-    let data = Instructions::Transfer {
+    let data = Instructions::Transfer(Transfer {
         amount: params.amount,
         id: params.id.clone(),
         eth_recipient: params.eth_recipient,
-    }
+    })
     .try_to_vec()?;
 
     let transfer_acc_to_create = get_address_pair(

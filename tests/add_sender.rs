@@ -97,11 +97,7 @@ async fn success() {
     let mut instructions = Vec::<Instruction>::new();
 
     // Insert signs instructions
-    let message = [
-        reward_manager.pubkey().as_ref(),
-        eth_address.as_ref(),
-    ]
-    .concat();
+    let message = [reward_manager.pubkey().as_ref(), eth_address.as_ref()].concat();
     for item in keys.iter().enumerate() {
         let priv_key = SecretKey::parse(item.1).unwrap();
         let inst = new_secp256k1_instruction_2_0(&priv_key, message.as_ref(), item.0 as _);
