@@ -5,9 +5,10 @@ use clap::{
 };
 
 use audius_reward_manager::{
-    instruction::{create_sender, init},
+    instruction::{create_sender, delete_sender, init},
     state::RewardManager,
 };
+use hex::FromHex;
 use solana_clap_utils::{
     input_parsers::pubkey_of,
     input_validators::{is_keypair, is_parsable, is_pubkey, is_url},
@@ -27,7 +28,6 @@ use spl_token::state::Account;
 use std::process::exit;
 use utils::is_hex;
 use utils::Transaction as CustomTransaction;
-use hex::FromHex;
 
 #[allow(dead_code)]
 pub struct Config {
@@ -80,17 +80,14 @@ fn command_init(config: &Config, token_mint: Pubkey, min_votes: u8) -> CommandRe
         &spl_token::id(),
     ));
 
-    instructions.push(
-        init(
-            &audius_reward_manager::id(),
-            &reward_manager_acc.pubkey(),
-            &reward_manager_token_acc.pubkey(),
-            &token_mint,
-            &config.owner.pubkey(),
-            min_votes,
-        )
-        .unwrap(),
-    );
+    instructions.push(init(
+        &audius_reward_manager::id(),
+        &reward_manager_acc.pubkey(),
+        &reward_manager_token_acc.pubkey(),
+        &token_mint,
+        &config.owner.pubkey(),
+        min_votes,
+    )?);
 
     let transaction = CustomTransaction {
         instructions: instructions.clone(),
@@ -125,6 +122,28 @@ fn command_create_sender(
             &config.fee_payer.pubkey(),
             decoded_eth_sender_address,
             decoded_eth_operator_address,
+        )?],
+        signers: vec![config.fee_payer.as_ref(), config.owner.as_ref()],
+    };
+
+    transaction.sign(config, 0)
+}
+
+fn command_delete_sender(
+    config: &Config,
+    reward_manager: Pubkey,
+    eth_sender_address: String,
+) -> CommandResult {
+    let decoded_eth_sender_address =
+        <[u8; 20]>::from_hex(eth_sender_address).expect("Ethereum sender address decoding failed");
+
+    let transaction = CustomTransaction {
+        instructions: vec![delete_sender(
+            &audius_reward_manager::id(),
+            &reward_manager,
+            &config.owner.pubkey(),
+            &config.fee_payer.pubkey(),
+            decoded_eth_sender_address,
         )?],
         signers: vec![config.fee_payer.as_ref(), config.owner.as_ref()],
     };
@@ -237,6 +256,25 @@ fn main() {
                     .required(true)
                     .help("Ethereum operator address"),
             ))
+        .subcommand(SubCommand::with_name("delete-sender").about("Admin method deleting sender")
+            .arg(
+                Arg::with_name("reward-manager")
+                    .long("reward-manager")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Reward manager"),
+            )
+            .arg(
+                Arg::with_name("eth-sender-address")
+                    .long("eth-sender-address")
+                    .validator(is_hex)
+                    .value_name("ETH_ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Ethereum sender address"),
+            ))
         .get_matches();
 
     let mut wallet_manager = None;
@@ -300,6 +338,12 @@ fn main() {
                 eth_sender_address,
                 eth_operator_address,
             )
+        }
+        ("delete-sender", Some(arg_matches)) => {
+            let reward_manager: Pubkey = pubkey_of(arg_matches, "reward-manager").unwrap();
+            let eth_sender_address: String =
+                value_t_or_exit!(arg_matches, "eth-sender-address", String);
+            command_delete_sender(&config, reward_manager, eth_sender_address)
         }
         _ => unreachable!(),
     }
