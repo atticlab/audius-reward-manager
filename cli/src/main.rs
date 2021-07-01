@@ -5,7 +5,7 @@ use clap::{
 };
 
 use audius_reward_manager::{
-    instruction::{create_sender, delete_sender, init},
+    instruction::{add_sender, create_sender, delete_sender, init},
     state::RewardManager,
 };
 use hex::FromHex;
@@ -26,8 +26,9 @@ use solana_sdk::{
 };
 use spl_token::state::Account;
 use std::process::exit;
-use utils::is_hex;
+use std::str::FromStr;
 use utils::Transaction as CustomTransaction;
+use utils::{is_csv_file, is_hex, new_secp256k1_instruction_2_0, sign_message, SenderData};
 
 #[allow(dead_code)]
 pub struct Config {
@@ -145,6 +146,53 @@ fn command_delete_sender(
             &config.fee_payer.pubkey(),
             decoded_eth_sender_address,
         )?],
+        signers: vec![config.fee_payer.as_ref(), config.owner.as_ref()],
+    };
+
+    transaction.sign(config, 0)
+}
+
+fn command_add_sender(
+    config: &Config,
+    reward_manager: Pubkey,
+    new_sender: String,
+    operator_address: String,
+    senders_secrets: String,
+) -> CommandResult {
+    let mut instructions = Vec::new();
+
+    let message_to_sign = [reward_manager.as_ref(), new_sender.as_ref()].concat();
+
+    let mut senders = Vec::new();
+    let mut secrets = Vec::new();
+    let mut rdr = csv::Reader::from_path(&senders_secrets)?;
+
+    let new_sender = <[u8; 20]>::from_hex(new_sender).expect("Ethereum address decoding failed");
+    let operator_address =
+        <[u8; 20]>::from_hex(operator_address).expect("Ethereum address decoding failed");
+
+    for key in rdr.deserialize() {
+        let deserialized_sender_data: SenderData = key?;
+        let decoded_secret = <[u8; 32]>::from_hex(deserialized_sender_data.eth_secret)
+            .expect("Secp256k1 secret key decoding failed");
+
+        senders.push(Pubkey::from_str(&deserialized_sender_data.solana_key)?);
+        secrets.push(secp256k1::SecretKey::parse(&decoded_secret)?);
+    }
+
+    instructions.append(&mut sign_message(message_to_sign.as_ref(), secrets));
+
+    instructions.push(add_sender(
+        &audius_reward_manager::id(),
+        &reward_manager,
+        &config.fee_payer.pubkey(),
+        new_sender,
+        operator_address,
+        &senders,
+    )?);
+
+    let transaction = CustomTransaction {
+        instructions,
         signers: vec![config.fee_payer.as_ref(), config.owner.as_ref()],
     };
 
@@ -275,6 +323,43 @@ fn main() {
                     .required(true)
                     .help("Ethereum sender address"),
             ))
+        .subcommand(SubCommand::with_name("add-sender").about("Add new sender")
+            .arg(
+                Arg::with_name("reward-manager")
+                    .long("reward-manager")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Reward manager"),
+            )
+            .arg(
+                Arg::with_name("new-sender")
+                    .long("new-sender")
+                    .validator(is_hex)
+                    .value_name("ETH_ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("New Ethereum sender address"),
+            )
+            .arg(
+                Arg::with_name("operator-address")
+                    .long("operator-address")
+                    .validator(is_hex)
+                    .value_name("ETH_ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Ethereum operator address"),
+            )
+            .arg(
+                Arg::with_name("senders-secrets")
+                .long("senders-secrets")
+                .validator(is_csv_file)
+                .value_name("PATH")
+                .takes_value(true)
+                .required(true)
+                .help("CSV file with senders Ethereum secret keys"),
+            ))
         .get_matches();
 
     let mut wallet_manager = None;
@@ -344,6 +429,20 @@ fn main() {
             let eth_sender_address: String =
                 value_t_or_exit!(arg_matches, "eth-sender-address", String);
             command_delete_sender(&config, reward_manager, eth_sender_address)
+        }
+        ("add-sender", Some(arg_matches)) => {
+            let reward_manager: Pubkey = pubkey_of(arg_matches, "reward-manager").unwrap();
+            let new_sender: String = value_t_or_exit!(arg_matches, "new-sender", String);
+            let operator_address: String =
+                value_t_or_exit!(arg_matches, "operator-address", String);
+            let senders_secrets: String = value_t_or_exit!(arg_matches, "senders-secrets", String);
+            command_add_sender(
+                &config,
+                reward_manager,
+                new_sender,
+                operator_address,
+                senders_secrets,
+            )
         }
         _ => unreachable!(),
     }
