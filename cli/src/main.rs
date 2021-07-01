@@ -5,9 +5,10 @@ use clap::{
 };
 
 use audius_reward_manager::{
-    instruction::{add_sender, create_sender, delete_sender, init},
-    state::RewardManager,
+    instruction::{add_sender, create_sender, delete_sender, init, transfer, Transfer},
+    state::{RewardManager, SenderAccount},
 };
+use borsh::BorshDeserialize;
 use hex::FromHex;
 use solana_clap_utils::{
     input_parsers::pubkey_of,
@@ -25,6 +26,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use spl_token::state::Account;
+use spl_token::ui_amount_to_amount;
 use std::process::exit;
 use std::str::FromStr;
 use utils::Transaction as CustomTransaction;
@@ -199,6 +201,94 @@ fn command_add_sender(
     transaction.sign(config, 0)
 }
 
+fn command_transfer(
+    config: &Config,
+    reward_manager: Pubkey,
+    recipient: Pubkey,
+    bot_oracle: Pubkey,
+    bot_oracle_secret: String,
+    senders_secrets: String,
+    transfer_id: String,
+    eth_address_recipient: String,
+    amount: u64,
+) -> CommandResult {
+    let reward_manager_data = config.rpc_client.get_account_data(&reward_manager)?;
+    let reward_manager_data = RewardManager::try_from_slice(reward_manager_data.as_slice())?;
+
+    let bot_oracle_data = config.rpc_client.get_account_data(&bot_oracle)?;
+    let bot_oracle_data = SenderAccount::try_from_slice(bot_oracle_data.as_slice())?;
+
+    let mut instructions = Vec::new();
+
+    let sender_message = [
+        &eth_address_recipient.as_bytes(),
+        b"_".as_ref(),
+        amount.to_le_bytes().as_ref(),
+        b"_".as_ref(),
+        &transfer_id.as_bytes(),
+        b"_".as_ref(),
+        bot_oracle_data.eth_address.as_ref(),
+    ]
+    .concat();
+
+    let bot_oracle_message = [
+        &eth_address_recipient.as_bytes(),
+        b"_".as_ref(),
+        amount.to_le_bytes().as_ref(),
+        b"_".as_ref(),
+        &transfer_id.as_bytes(),
+    ]
+    .concat();
+
+    let mut senders = Vec::new();
+    let mut secrets = Vec::new();
+
+    let mut rdr = csv::Reader::from_path(&senders_secrets)?;
+    for key in rdr.deserialize() {
+        let deserialized_sender_data: SenderData = key?;
+        let decoded_secret = <[u8; 32]>::from_hex(deserialized_sender_data.eth_secret)
+            .expect("Secp256k1 secret key decoding failed");
+
+        senders.push(Pubkey::from_str(&deserialized_sender_data.solana_key)?);
+        secrets.push(secp256k1::SecretKey::parse(&decoded_secret)?);
+    }
+
+    instructions.append(&mut sign_message(sender_message.as_ref(), secrets));
+
+    let bot_oracle_secret =
+        <[u8; 32]>::from_hex(bot_oracle_secret).expect("Secp256k1 secret key decoding failed");
+
+    instructions.push(new_secp256k1_instruction_2_0(
+        &secp256k1::SecretKey::parse(&bot_oracle_secret)?,
+        bot_oracle_message.as_ref(),
+        instructions.len() as u8,
+    ));
+
+    let decoded_recipient_address = <[u8; 20]>::from_hex(eth_address_recipient).expect("Ethereum address decoding failed");
+
+    instructions.push(transfer(
+        &audius_reward_manager::id(),
+        &reward_manager,
+        &recipient,
+        &reward_manager_data.token_account,
+        &bot_oracle,
+        &config.fee_payer.pubkey(),
+        senders,
+        Transfer {
+            amount,
+            id: transfer_id,
+            eth_recipient: decoded_recipient_address,
+        },
+    )?);
+
+    let transaction = CustomTransaction {
+        instructions,
+        signers: vec![config.fee_payer.as_ref(), config.owner.as_ref()],
+    };
+
+    transaction.sign(config, 0)
+}
+
 fn main() {
     let matches = App::new(crate_name!())
         .about(crate_description!())
@@ -360,6 +450,79 @@ fn main() {
                 .required(true)
                 .help("CSV file with senders Ethereum secret keys"),
             ))
+        .subcommand(SubCommand::with_name("transfer").about("Make transfer")
+            .arg(
+                Arg::with_name("reward-manager")
+                    .long("reward-manager")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Reward manager"),
+            )
+            .arg(
+                Arg::with_name("recipient")
+                    .long("recipient")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Recipient"),
+            )
+            .arg(
+                Arg::with_name("bot-oracle")
+                    .long("bot-oracle")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Bot oracle"),
+            )
+            .arg(
+                Arg::with_name("bot-oracle-secret")
+                    .long("bot-oracle-secret")
+                    .validator(is_hex)
+                    .value_name("ETH_SECRET")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Ethereum bot oracle secret key"),
+            )
+            .arg(
+                Arg::with_name("senders-secrets")
+                    .long("senders-secrets")
+                    .validator(is_csv_file)
+                    .value_name("PATH")
+                    .takes_value(true)
+                    .required(true)
+                    .help("CSV file with senders Ethereum secret keys"),
+            )
+            .arg(
+                Arg::with_name("transfer-id")
+                    .long("transfer-id")
+                    .validator(is_parsable::<String>)
+                    .value_name("STRING")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Transfer ID"),
+            )
+            .arg(
+                Arg::with_name("eth-address-recipient")
+                    .long("eth-address-recipient")
+                    .validator(is_hex)
+                    .value_name("ETH_ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Recipient Ethereum address"),
+            )
+            .arg(
+                Arg::with_name("amount")
+                    .long("amount")
+                    .validator(is_parsable::<f64>)
+                    .value_name("NUMBER")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Amount to transfer"),
+            ))
         .get_matches();
 
     let mut wallet_manager = None;
@@ -442,6 +605,31 @@ fn main() {
                 new_sender,
                 operator_address,
                 senders_secrets,
+            )
+        }
+        ("transfer", Some(arg_matches)) => {
+            let reward_manager: Pubkey = pubkey_of(arg_matches, "reward-manager").unwrap();
+            let recipient: Pubkey = pubkey_of(arg_matches, "recipient").unwrap();
+            let bot_oracle: Pubkey = pubkey_of(arg_matches, "bot_oracle").unwrap();
+            let bot_oracle_secret: String =
+                value_t_or_exit!(arg_matches, "bot-oracle-secret", String);
+            let senders_secrets: String = value_t_or_exit!(arg_matches, "senders-secrets", String);
+            let transfer_id: String = value_t_or_exit!(arg_matches, "transfer-id", String);
+            let eth_address_recipient: String =
+                value_t_or_exit!(arg_matches, "eth-address-recipient", String);
+            let amount: f64 = value_t_or_exit!(arg_matches, "amount", f64);
+            let amount = ui_amount_to_amount(amount, spl_token::native_mint::DECIMALS);
+
+            command_transfer(
+                &config,
+                reward_manager,
+                recipient,
+                bot_oracle,
+                bot_oracle_secret,
+                senders_secrets,
+                transfer_id,
+                eth_address_recipient,
+                amount,
             )
         }
         _ => unreachable!(),
