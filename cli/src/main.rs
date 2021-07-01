@@ -1,3 +1,4 @@
+mod utils;
 use clap::{
     crate_description, crate_name, crate_version, value_t, value_t_or_exit, App, AppSettings, Arg,
     SubCommand,
@@ -9,18 +10,22 @@ use solana_clap_utils::{
     keypair::signer_from_path,
 };
 use solana_client::rpc_client::RpcClient;
-use solana_program::pubkey::Pubkey;
+use solana_program::{pubkey::Pubkey, instruction::Instruction};
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     native_token::lamports_to_sol,
     signature::{Keypair, Signer},
     system_instruction,
     transaction::Transaction,
+    program_pack::Pack,
 };
 use std::process::exit;
+use audius_reward_manager::{state::RewardManager, instruction::{init}};
+use spl_token::state::Account;
+use utils::Transaction as CustomTransaction;
 
 #[allow(dead_code)]
-struct Config {
+pub struct Config {
     rpc_client: RpcClient,
     verbose: bool,
     owner: Box<dyn Signer>,
@@ -31,19 +36,54 @@ struct Config {
 type Error = Box<dyn std::error::Error>;
 type CommandResult = Result<Option<Transaction>, Error>;
 
-fn check_fee_payer_balance(config: &Config, required_balance: u64) -> Result<(), Error> {
-    let balance = config.rpc_client.get_balance(&config.fee_payer.pubkey())?;
-    if balance < required_balance {
-        Err(format!(
-            "Fee payer, {}, has insufficient balance: {} required, {} available",
-            config.fee_payer.pubkey(),
-            lamports_to_sol(required_balance),
-            lamports_to_sol(balance)
-        )
-        .into())
-    } else {
-        Ok(())
-    }
+fn command_init(config: &Config, token_mint: Pubkey, min_votes: u8) -> CommandResult {
+    let mut instructions: Vec<Instruction> = Vec::new();
+
+    let reward_manager_acc = Keypair::new();
+    println!("Reward manager key created: {:?}", reward_manager_acc.pubkey());
+
+    let reward_manager_acc_balance = config
+        .rpc_client
+        .get_minimum_balance_for_rent_exemption(RewardManager::LEN)?;
+    
+    instructions.push(system_instruction::create_account(
+        &config.fee_payer.pubkey(),
+        &reward_manager_acc.pubkey(),
+        reward_manager_acc_balance,
+        RewardManager::LEN as u64,
+        &audius_reward_manager::id(),
+    ));
+
+    let reward_manager_token_acc = Keypair::new();
+    println!("Reward manager token key created: {:?}", reward_manager_token_acc.pubkey());
+
+    let token_acc_balance = config
+        .rpc_client
+        .get_minimum_balance_for_rent_exemption(Account::LEN)?;
+    
+    instructions.push(system_instruction::create_account(
+        &config.fee_payer.pubkey(),
+        &reward_manager_token_acc.pubkey(),
+        token_acc_balance,
+        Account::LEN as u64,
+        &spl_token::id(),
+    ));
+
+    instructions.push(
+        init(&audius_reward_manager::id(), &reward_manager_acc.pubkey(), &reward_manager_token_acc.pubkey(), &token_mint, &config.owner.pubkey(), min_votes).unwrap()
+    );
+
+    let transaction = CustomTransaction {
+        instructions: instructions.clone(),
+        signers: vec![
+            config.fee_payer.as_ref(),
+            config.owner.as_ref(),
+            &reward_manager_acc,
+            &reward_manager_token_acc,
+        ],
+    };
+
+    transaction.sign(config, reward_manager_acc_balance + token_acc_balance)
 }
 
 fn main() {
@@ -169,7 +209,11 @@ fn main() {
     solana_logger::setup_with_default("solana=info");
 
     let _ = match matches.subcommand() {
-        ("create-market", Some(_)) => command_create_market(&config),
+        ("init", Some(arg_matches)) => {
+            let token_mint: Pubkey = pubkey_of(arg_matches, "token-mint").unwrap();
+            let min_votes: u8 = value_t_or_exit!(arg_matches, "min-votes", u8);
+            command_init(&config, token_mint, min_votes)
+        },
         _ => unreachable!(),
     }
     .and_then(|transaction| {
