@@ -4,25 +4,30 @@ use clap::{
     SubCommand,
 };
 
+use audius_reward_manager::{
+    instruction::{create_sender, init},
+    state::RewardManager,
+};
 use solana_clap_utils::{
     input_parsers::pubkey_of,
     input_validators::{is_keypair, is_parsable, is_pubkey, is_url},
     keypair::signer_from_path,
 };
 use solana_client::rpc_client::RpcClient;
-use solana_program::{pubkey::Pubkey, instruction::Instruction};
+use solana_program::{instruction::Instruction, pubkey::Pubkey};
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     native_token::lamports_to_sol,
+    program_pack::Pack,
     signature::{Keypair, Signer},
     system_instruction,
     transaction::Transaction,
-    program_pack::Pack,
 };
-use std::process::exit;
-use audius_reward_manager::{state::RewardManager, instruction::{init}};
 use spl_token::state::Account;
+use std::process::exit;
+use utils::is_hex;
 use utils::Transaction as CustomTransaction;
+use hex::FromHex;
 
 #[allow(dead_code)]
 pub struct Config {
@@ -40,12 +45,15 @@ fn command_init(config: &Config, token_mint: Pubkey, min_votes: u8) -> CommandRe
     let mut instructions: Vec<Instruction> = Vec::new();
 
     let reward_manager_acc = Keypair::new();
-    println!("Reward manager key created: {:?}", reward_manager_acc.pubkey());
+    println!(
+        "Reward manager key created: {:?}",
+        reward_manager_acc.pubkey()
+    );
 
     let reward_manager_acc_balance = config
         .rpc_client
         .get_minimum_balance_for_rent_exemption(RewardManager::LEN)?;
-    
+
     instructions.push(system_instruction::create_account(
         &config.fee_payer.pubkey(),
         &reward_manager_acc.pubkey(),
@@ -55,12 +63,15 @@ fn command_init(config: &Config, token_mint: Pubkey, min_votes: u8) -> CommandRe
     ));
 
     let reward_manager_token_acc = Keypair::new();
-    println!("Reward manager token key created: {:?}", reward_manager_token_acc.pubkey());
+    println!(
+        "Reward manager token key created: {:?}",
+        reward_manager_token_acc.pubkey()
+    );
 
     let token_acc_balance = config
         .rpc_client
         .get_minimum_balance_for_rent_exemption(Account::LEN)?;
-    
+
     instructions.push(system_instruction::create_account(
         &config.fee_payer.pubkey(),
         &reward_manager_token_acc.pubkey(),
@@ -70,7 +81,15 @@ fn command_init(config: &Config, token_mint: Pubkey, min_votes: u8) -> CommandRe
     ));
 
     instructions.push(
-        init(&audius_reward_manager::id(), &reward_manager_acc.pubkey(), &reward_manager_token_acc.pubkey(), &token_mint, &config.owner.pubkey(), min_votes).unwrap()
+        init(
+            &audius_reward_manager::id(),
+            &reward_manager_acc.pubkey(),
+            &reward_manager_token_acc.pubkey(),
+            &token_mint,
+            &config.owner.pubkey(),
+            min_votes,
+        )
+        .unwrap(),
     );
 
     let transaction = CustomTransaction {
@@ -84,6 +103,33 @@ fn command_init(config: &Config, token_mint: Pubkey, min_votes: u8) -> CommandRe
     };
 
     transaction.sign(config, reward_manager_acc_balance + token_acc_balance)
+}
+
+fn command_create_sender(
+    config: &Config,
+    reward_manager: Pubkey,
+    eth_sender_address: String,
+    eth_operator_address: String,
+) -> CommandResult {
+    let decoded_eth_sender_address =
+        <[u8; 20]>::from_hex(eth_sender_address).expect("Ethereum sender address decoding failed");
+
+    let decoded_eth_operator_address = <[u8; 20]>::from_hex(eth_operator_address)
+        .expect("Ethereum operator address decoding failed");
+
+    let transaction = CustomTransaction {
+        instructions: vec![create_sender(
+            &audius_reward_manager::id(),
+            &reward_manager,
+            &config.owner.pubkey(),
+            &config.fee_payer.pubkey(),
+            decoded_eth_sender_address,
+            decoded_eth_operator_address,
+        )?],
+        signers: vec![config.fee_payer.as_ref(), config.owner.as_ref()],
+    };
+
+    transaction.sign(config, 0)
 }
 
 fn main() {
@@ -153,7 +199,7 @@ fn main() {
                     .value_name("ADDRESS")
                     .takes_value(true)
                     .required(true)
-                    .help(" Mint with which the new token account will be associated on initialization."),
+                    .help("Mint with which the new token account will be associated on initialization."),
             )
             .arg(
                 Arg::with_name("min-votes")
@@ -162,6 +208,34 @@ fn main() {
                     .takes_value(true)
                     .required(true)
                     .help("Number of signer votes required for sending rewards."),
+            ))
+        .subcommand(SubCommand::with_name("create-sender").about("Admin method creating new authorized sender")
+            .arg(
+                Arg::with_name("reward-manager")
+                    .long("reward-manager")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Reward manager"),
+            )
+            .arg(
+                Arg::with_name("eth-sender-address")
+                    .long("eth-sender-address")
+                    .validator(is_hex)
+                    .value_name("ETH_ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Ethereum sender address"),
+            )
+            .arg(
+                Arg::with_name("eth-operator-address")
+                    .long("eth-operator-address")
+                    .validator(is_hex)
+                    .value_name("ETH_ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Ethereum operator address"),
             ))
         .get_matches();
 
@@ -213,7 +287,20 @@ fn main() {
             let token_mint: Pubkey = pubkey_of(arg_matches, "token-mint").unwrap();
             let min_votes: u8 = value_t_or_exit!(arg_matches, "min-votes", u8);
             command_init(&config, token_mint, min_votes)
-        },
+        }
+        ("create-sender", Some(arg_matches)) => {
+            let reward_manager: Pubkey = pubkey_of(arg_matches, "reward-manager").unwrap();
+            let eth_sender_address: String =
+                value_t_or_exit!(arg_matches, "eth-sender-address", String);
+            let eth_operator_address: String =
+                value_t_or_exit!(arg_matches, "eth-operator-address", String);
+            command_create_sender(
+                &config,
+                reward_manager,
+                eth_sender_address,
+                eth_operator_address,
+            )
+        }
         _ => unreachable!(),
     }
     .and_then(|transaction| {

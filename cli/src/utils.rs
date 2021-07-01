@@ -13,6 +13,14 @@ use solana_sdk::{
 };
 use spl_token::state::Account;
 
+pub fn is_hex(s: String) -> Result<(), String> {
+    if hex::decode(s).is_err() {
+        Err(String::from("Wrong address format"))
+    } else {
+        Ok(())
+    }
+}
+
 fn check_fee_payer_balance(config: &Config, required_balance: u64) -> Result<(), Error> {
     let balance = config.rpc_client.get_balance(&config.fee_payer.pubkey())?;
     if balance < required_balance {
