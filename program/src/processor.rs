@@ -105,6 +105,10 @@ impl Processor {
         _sys_prog_info: &AccountInfo<'a>,
         rent_info: &AccountInfo<'a>,
     ) -> ProgramResult {
+        if !manager_account_info.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
         if !reward_manager.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
@@ -158,6 +162,9 @@ impl Processor {
         refunder_account_info: &AccountInfo<'a>,
         _sys_prog: &AccountInfo<'a>,
     ) -> ProgramResult {
+        if !manager_account_info.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
         let sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
         if sender.reward_manager != *reward_manager_info.key {
             return Err(AudiusProgramError::WrongRewardManagerKey.into());
