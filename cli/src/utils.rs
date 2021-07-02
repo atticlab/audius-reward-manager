@@ -1,23 +1,19 @@
 //! Extended functionality
 use crate::{Config, Error};
-use borsh::BorshDeserialize;
 use regex::Regex;
 use serde::Deserialize;
 use sha3::Digest;
 use solana_program::{
     instruction::Instruction,
-    program_pack::Pack,
-    pubkey::{Pubkey, PubkeyError},
 };
 use solana_sdk::{
     native_token::lamports_to_sol,
     secp256k1_instruction::{
         construct_eth_pubkey, SecpSignatureOffsets, DATA_START, SIGNATURE_SERIALIZED_SIZE,
     },
-    signature::{Signature, Signer},
+    signature::Signer,
     transaction::Transaction as OnchainTransaction,
 };
-use spl_token::state::Account;
 
 /// Struct to deserialize key from csv file
 #[derive(Debug, Deserialize)]
@@ -85,20 +81,6 @@ impl<'a> Transaction<'a> {
         transaction.sign(&self.signers, recent_blockhash);
 
         Ok(Some(transaction))
-    }
-
-    pub fn sign_and_send(
-        self,
-        config: &Config,
-        additional_balance_required: u64,
-    ) -> Result<Signature, Error> {
-        let signed_transaction = self.sign(config, additional_balance_required)?.unwrap();
-        Ok(config
-            .rpc_client
-            .send_and_confirm_transaction_with_spinner_and_commitment(
-                &signed_transaction,
-                config.commitment_config,
-            )?)
     }
 }
 

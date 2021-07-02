@@ -6,7 +6,9 @@ use clap::{
 
 use audius_reward_manager::{
     instruction::{add_sender, create_sender, delete_sender, init, transfer, Transfer},
+    processor::SENDER_SEED_PREFIX,
     state::{RewardManager, SenderAccount},
+    utils::get_address_pair,
 };
 use borsh::BorshDeserialize;
 use hex::FromHex;
@@ -19,7 +21,6 @@ use solana_client::rpc_client::RpcClient;
 use solana_program::{instruction::Instruction, pubkey::Pubkey};
 use solana_sdk::{
     commitment_config::CommitmentConfig,
-    native_token::lamports_to_sol,
     program_pack::Pack,
     signature::{Keypair, Signer},
     system_instruction,
@@ -43,6 +44,9 @@ pub struct Config {
 
 type Error = Box<dyn std::error::Error>;
 type CommandResult = Result<Option<Transaction>, Error>;
+
+const HEX_ETH_ADDRESS_DECODING_ERROR: &str = "Ethereum address decoding failed";
+const HEX_ETH_SECRET_DECODING_ERROR: &str = "Ethereum secret decoding failed";
 
 fn command_init(config: &Config, token_mint: Pubkey, min_votes: u8) -> CommandResult {
     let mut instructions: Vec<Instruction> = Vec::new();
@@ -112,10 +116,24 @@ fn command_create_sender(
     eth_operator_address: String,
 ) -> CommandResult {
     let decoded_eth_sender_address =
-        <[u8; 20]>::from_hex(eth_sender_address).expect("Ethereum sender address decoding failed");
+        <[u8; 20]>::from_hex(eth_sender_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
 
-    let decoded_eth_operator_address = <[u8; 20]>::from_hex(eth_operator_address)
-        .expect("Ethereum operator address decoding failed");
+    let decoded_eth_operator_address =
+        <[u8; 20]>::from_hex(eth_operator_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
+
+    let new_sender_key = get_address_pair(
+        &audius_reward_manager::id(),
+        &reward_manager,
+        [
+            SENDER_SEED_PREFIX.as_ref(),
+            decoded_eth_sender_address.as_ref(),
+        ]
+        .concat(),
+    )?;
+    println!(
+        "New sender account created: {:?}",
+        new_sender_key.derive.address
+    );
 
     let transaction = CustomTransaction {
         instructions: vec![create_sender(
@@ -138,7 +156,7 @@ fn command_delete_sender(
     eth_sender_address: String,
 ) -> CommandResult {
     let decoded_eth_sender_address =
-        <[u8; 20]>::from_hex(eth_sender_address).expect("Ethereum sender address decoding failed");
+        <[u8; 20]>::from_hex(eth_sender_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
 
     let transaction = CustomTransaction {
         instructions: vec![delete_sender(
@@ -163,20 +181,21 @@ fn command_add_sender(
 ) -> CommandResult {
     let mut instructions = Vec::new();
 
-    let message_to_sign = [reward_manager.as_ref(), new_sender.as_ref()].concat();
-
     let mut senders = Vec::new();
     let mut secrets = Vec::new();
     let mut rdr = csv::Reader::from_path(&senders_secrets)?;
 
-    let new_sender = <[u8; 20]>::from_hex(new_sender).expect("Ethereum address decoding failed");
+    let new_sender = <[u8; 20]>::from_hex(new_sender).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
+    let message_to_sign = [reward_manager.as_ref(), new_sender.as_ref()].concat();
     let operator_address =
-        <[u8; 20]>::from_hex(operator_address).expect("Ethereum address decoding failed");
+        <[u8; 20]>::from_hex(operator_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
+
+    println!("Signing message with senders private keys...");
 
     for key in rdr.deserialize() {
         let deserialized_sender_data: SenderData = key?;
         let decoded_secret = <[u8; 32]>::from_hex(deserialized_sender_data.eth_secret)
-            .expect("Secp256k1 secret key decoding failed");
+            .expect(HEX_ETH_SECRET_DECODING_ERROR);
 
         senders.push(Pubkey::from_str(&deserialized_sender_data.solana_key)?);
         secrets.push(secp256k1::SecretKey::parse(&decoded_secret)?);
@@ -192,6 +211,17 @@ fn command_add_sender(
         operator_address,
         &senders,
     )?);
+
+    let new_sender_solana_key = get_address_pair(
+        &audius_reward_manager::id(),
+        &reward_manager,
+        [SENDER_SEED_PREFIX.as_ref(), new_sender.as_ref()].concat(),
+    )?;
+
+    println!(
+        "New sender account was created: {:?}",
+        new_sender_solana_key.derive.address
+    );
 
     let transaction = CustomTransaction {
         instructions,
@@ -220,8 +250,11 @@ fn command_transfer(
 
     let mut instructions = Vec::new();
 
+    let decoded_recipient_address =
+        <[u8; 20]>::from_hex(eth_address_recipient).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
+
     let sender_message = [
-        &eth_address_recipient.as_bytes(),
+        decoded_recipient_address.as_ref(),
         b"_".as_ref(),
         amount.to_le_bytes().as_ref(),
         b"_".as_ref(),
@@ -232,7 +265,7 @@ fn command_transfer(
     .concat();
 
     let bot_oracle_message = [
-        &eth_address_recipient.as_bytes(),
+        decoded_recipient_address.as_ref(),
         b"_".as_ref(),
         amount.to_le_bytes().as_ref(),
         b"_".as_ref(),
@@ -243,11 +276,14 @@ fn command_transfer(
     let mut senders = Vec::new();
     let mut secrets = Vec::new();
 
+    println!("Signing message with senders and bot oracle private keys...");
+
     let mut rdr = csv::Reader::from_path(&senders_secrets)?;
+
     for key in rdr.deserialize() {
         let deserialized_sender_data: SenderData = key?;
         let decoded_secret = <[u8; 32]>::from_hex(deserialized_sender_data.eth_secret)
-            .expect("Secp256k1 secret key decoding failed");
+            .expect(HEX_ETH_SECRET_DECODING_ERROR);
 
         senders.push(Pubkey::from_str(&deserialized_sender_data.solana_key)?);
         secrets.push(secp256k1::SecretKey::parse(&decoded_secret)?);
@@ -256,15 +292,13 @@ fn command_transfer(
     instructions.append(&mut sign_message(sender_message.as_ref(), secrets));
 
     let bot_oracle_secret =
-        <[u8; 32]>::from_hex(bot_oracle_secret).expect("Secp256k1 secret key decoding failed");
+        <[u8; 32]>::from_hex(bot_oracle_secret).expect(HEX_ETH_SECRET_DECODING_ERROR);
 
     instructions.push(new_secp256k1_instruction_2_0(
         &secp256k1::SecretKey::parse(&bot_oracle_secret)?,
         bot_oracle_message.as_ref(),
         instructions.len() as u8,
     ));
-
-    let decoded_recipient_address = <[u8; 20]>::from_hex(eth_address_recipient).expect("Ethereum address decoding failed");
 
     instructions.push(transfer(
         &audius_reward_manager::id(),
@@ -610,7 +644,7 @@ fn main() {
         ("transfer", Some(arg_matches)) => {
             let reward_manager: Pubkey = pubkey_of(arg_matches, "reward-manager").unwrap();
             let recipient: Pubkey = pubkey_of(arg_matches, "recipient").unwrap();
-            let bot_oracle: Pubkey = pubkey_of(arg_matches, "bot_oracle").unwrap();
+            let bot_oracle: Pubkey = pubkey_of(arg_matches, "bot-oracle").unwrap();
             let bot_oracle_secret: String =
                 value_t_or_exit!(arg_matches, "bot-oracle-secret", String);
             let senders_secrets: String = value_t_or_exit!(arg_matches, "senders-secrets", String);
