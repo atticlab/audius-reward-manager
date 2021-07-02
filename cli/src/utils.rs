@@ -3,9 +3,7 @@ use crate::{Config, Error};
 use regex::Regex;
 use serde::Deserialize;
 use sha3::Digest;
-use solana_program::{
-    instruction::Instruction,
-};
+use solana_program::instruction::Instruction;
 use solana_sdk::{
     native_token::lamports_to_sol,
     secp256k1_instruction::{
@@ -22,12 +20,21 @@ pub struct SenderData {
     pub eth_secret: String,
 }
 
+pub const ETH_ADDRESS_PREFIX: &str = "0x";
+
 pub fn is_hex(s: String) -> Result<(), String> {
     if hex::decode(s).is_err() {
-        Err(String::from("Wrong address format"))
+        Err(String::from("Wrong hex string"))
     } else {
         Ok(())
     }
+}
+
+pub fn is_eth_address(s: String) -> Result<(), String> {
+    if s.get(0..2).unwrap() != ETH_ADDRESS_PREFIX {
+        return Err(String::from("Wrong address prefix"));
+    }
+    is_hex(String::from(s.get(2..).unwrap()))
 }
 
 pub fn is_csv_file(s: String) -> Result<(), String> {

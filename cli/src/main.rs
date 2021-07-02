@@ -11,6 +11,7 @@ use audius_reward_manager::{
     utils::get_address_pair,
 };
 use borsh::BorshDeserialize;
+use claimable_tokens::utils::program::get_address_pair as get_claimable_address;
 use hex::FromHex;
 use solana_clap_utils::{
     input_parsers::pubkey_of,
@@ -31,7 +32,9 @@ use spl_token::ui_amount_to_amount;
 use std::process::exit;
 use std::str::FromStr;
 use utils::Transaction as CustomTransaction;
-use utils::{is_csv_file, is_hex, new_secp256k1_instruction_2_0, sign_message, SenderData};
+use utils::{
+    is_csv_file, is_eth_address, is_hex, new_secp256k1_instruction_2_0, sign_message, SenderData,
+};
 
 #[allow(dead_code)]
 pub struct Config {
@@ -234,7 +237,6 @@ fn command_add_sender(
 fn command_transfer(
     config: &Config,
     reward_manager: Pubkey,
-    recipient: Pubkey,
     bot_oracle: Pubkey,
     bot_oracle_secret: String,
     senders_secrets: String,
@@ -248,10 +250,41 @@ fn command_transfer(
     let bot_oracle_data = config.rpc_client.get_account_data(&bot_oracle)?;
     let bot_oracle_data = SenderAccount::try_from_slice(bot_oracle_data.as_slice())?;
 
-    let mut instructions = Vec::new();
-
     let decoded_recipient_address =
         <[u8; 20]>::from_hex(eth_address_recipient).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
+
+    let mut instructions = Vec::new();
+
+    let vault_acc_data = config
+        .rpc_client
+        .get_account_data(&reward_manager_data.token_account)?;
+    let vault_acc_data = Account::unpack(vault_acc_data.as_slice())?;
+
+    let claimable_token_acc = get_claimable_address(
+        &claimable_tokens::id(),
+        &vault_acc_data.mint,
+        decoded_recipient_address,
+    )?;
+    // Checking if the derived address of recipient does not exist
+    // then we must add instruction to create it
+    let derived_token_acc_data = config
+        .rpc_client
+        .get_account_data(&claimable_token_acc.derive.address);
+    if derived_token_acc_data.is_err() {
+        instructions.push(claimable_tokens::instruction::init(
+            &claimable_tokens::id(),
+            &config.fee_payer.pubkey(),
+            &vault_acc_data.mint,
+            claimable_tokens::instruction::CreateTokenAccount {
+                eth_address: decoded_recipient_address,
+            },
+        )?);
+
+        println!(
+            "Create new derived token account for recipient: {:?}",
+            claimable_token_acc.derive.address
+        );
+    }
 
     let sender_message = [
         decoded_recipient_address.as_ref(),
@@ -303,7 +336,7 @@ fn command_transfer(
     instructions.push(transfer(
         &audius_reward_manager::id(),
         &reward_manager,
-        &recipient,
+        &claimable_token_acc.derive.address,
         &reward_manager_data.token_account,
         &bot_oracle,
         &config.fee_payer.pubkey(),
@@ -413,7 +446,7 @@ fn main() {
             .arg(
                 Arg::with_name("eth-sender-address")
                     .long("eth-sender-address")
-                    .validator(is_hex)
+                    .validator(is_eth_address)
                     .value_name("ETH_ADDRESS")
                     .takes_value(true)
                     .required(true)
@@ -422,7 +455,7 @@ fn main() {
             .arg(
                 Arg::with_name("eth-operator-address")
                     .long("eth-operator-address")
-                    .validator(is_hex)
+                    .validator(is_eth_address)
                     .value_name("ETH_ADDRESS")
                     .takes_value(true)
                     .required(true)
@@ -441,7 +474,7 @@ fn main() {
             .arg(
                 Arg::with_name("eth-sender-address")
                     .long("eth-sender-address")
-                    .validator(is_hex)
+                    .validator(is_eth_address)
                     .value_name("ETH_ADDRESS")
                     .takes_value(true)
                     .required(true)
@@ -460,7 +493,7 @@ fn main() {
             .arg(
                 Arg::with_name("new-sender")
                     .long("new-sender")
-                    .validator(is_hex)
+                    .validator(is_eth_address)
                     .value_name("ETH_ADDRESS")
                     .takes_value(true)
                     .required(true)
@@ -469,7 +502,7 @@ fn main() {
             .arg(
                 Arg::with_name("operator-address")
                     .long("operator-address")
-                    .validator(is_hex)
+                    .validator(is_eth_address)
                     .value_name("ETH_ADDRESS")
                     .takes_value(true)
                     .required(true)
@@ -493,15 +526,6 @@ fn main() {
                     .takes_value(true)
                     .required(true)
                     .help("Reward manager"),
-            )
-            .arg(
-                Arg::with_name("recipient")
-                    .long("recipient")
-                    .validator(is_pubkey)
-                    .value_name("ADDRESS")
-                    .takes_value(true)
-                    .required(true)
-                    .help("Recipient"),
             )
             .arg(
                 Arg::with_name("bot-oracle")
@@ -542,7 +566,7 @@ fn main() {
             .arg(
                 Arg::with_name("eth-address-recipient")
                     .long("eth-address-recipient")
-                    .validator(is_hex)
+                    .validator(is_eth_address)
                     .value_name("ETH_ADDRESS")
                     .takes_value(true)
                     .required(true)
@@ -617,15 +641,19 @@ fn main() {
             command_create_sender(
                 &config,
                 reward_manager,
-                eth_sender_address,
-                eth_operator_address,
+                String::from(eth_sender_address.get(2..).unwrap()),
+                String::from(eth_operator_address.get(2..).unwrap()),
             )
         }
         ("delete-sender", Some(arg_matches)) => {
             let reward_manager: Pubkey = pubkey_of(arg_matches, "reward-manager").unwrap();
             let eth_sender_address: String =
                 value_t_or_exit!(arg_matches, "eth-sender-address", String);
-            command_delete_sender(&config, reward_manager, eth_sender_address)
+            command_delete_sender(
+                &config,
+                reward_manager,
+                String::from(eth_sender_address.get(2..).unwrap()),
+            )
         }
         ("add-sender", Some(arg_matches)) => {
             let reward_manager: Pubkey = pubkey_of(arg_matches, "reward-manager").unwrap();
@@ -636,14 +664,13 @@ fn main() {
             command_add_sender(
                 &config,
                 reward_manager,
-                new_sender,
-                operator_address,
+                String::from(new_sender.get(2..).unwrap()),
+                String::from(operator_address.get(2..).unwrap()),
                 senders_secrets,
             )
         }
         ("transfer", Some(arg_matches)) => {
             let reward_manager: Pubkey = pubkey_of(arg_matches, "reward-manager").unwrap();
-            let recipient: Pubkey = pubkey_of(arg_matches, "recipient").unwrap();
             let bot_oracle: Pubkey = pubkey_of(arg_matches, "bot-oracle").unwrap();
             let bot_oracle_secret: String =
                 value_t_or_exit!(arg_matches, "bot-oracle-secret", String);
@@ -657,12 +684,11 @@ fn main() {
             command_transfer(
                 &config,
                 reward_manager,
-                recipient,
                 bot_oracle,
                 bot_oracle_secret,
                 senders_secrets,
                 transfer_id,
-                eth_address_recipient,
+                String::from(eth_address_recipient.get(2..).unwrap()),
                 amount,
             )
         }
