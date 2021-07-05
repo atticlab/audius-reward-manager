@@ -7,16 +7,7 @@ use crate::{
     state::SenderAccount,
 };
 use borsh::BorshDeserialize;
-use solana_program::{
-    account_info::AccountInfo,
-    entrypoint::ProgramResult,
-    instruction::Instruction,
-    program::invoke_signed,
-    program_error::ProgramError,
-    program_pack::IsInitialized,
-    pubkey::{Pubkey, PubkeyError},
-    secp256k1_program, system_instruction, sysvar,
-};
+use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, instruction::Instruction, msg, program::invoke_signed, program_error::ProgramError, program_pack::IsInitialized, pubkey::{Pubkey, PubkeyError}, secp256k1_program, system_instruction, sysvar};
 use std::collections::BTreeSet;
 use std::{collections::BTreeMap, convert::TryInto};
 
@@ -219,6 +210,7 @@ pub fn get_eth_addresses<'a>(
         if senders_eth_addresses.contains(&signer_data.eth_address) {
             return Err(AudiusProgramError::RepeatedSenders.into());
         }
+        msg!("operator: {:?}", signer_data.operator);
         if !operators.insert(signer_data.operator) {
             return Err(AudiusProgramError::OperatorCollision.into());
         }

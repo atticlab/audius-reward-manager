@@ -1,5 +1,7 @@
 #![cfg(feature = "test-bpf")]
 mod utils;
+use std::mem::MaybeUninit;
+
 use audius_reward_manager::{
     error::AudiusProgramError,
     instruction,
@@ -10,7 +12,7 @@ use audius_reward_manager::{
 };
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
-use solana_program::program_pack::Pack;
+use solana_program::{instruction::Instruction, program_pack::Pack, pubkey::Pubkey};
 use solana_program_test::*;
 use solana_sdk::{
     instruction::InstructionError,
@@ -510,6 +512,7 @@ async fn oracle_sign_missing() {
 async fn repeating_operators() {
     let mut program_test = program_test();
     program_test.add_program("claimable_tokens", claimable_tokens::id(), None);
+    let mut rng = thread_rng();    
 
     let mut context = program_test.start_with_context().await;
 
@@ -537,53 +540,65 @@ async fn repeating_operators() {
         &token_account,
         &mint.pubkey(),
         &manager_account.pubkey(),
-        1 as u8,
+        3 as u8,
     )
     .await;
 
-    let mut rng = thread_rng();
-    let key: [u8; 32] = rng.gen();
-    let sender_priv_key = SecretKey::parse(&key).unwrap();
-    let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
-    let eth_address_1 = construct_eth_pubkey(&secp_pubkey);
-    let collided_operator: EthereumAddress = rng.gen();
-
-    let first_sender = get_address_pair(
-        &audius_reward_manager::id(),
-        &reward_manager.pubkey(),
-        [SENDER_SEED_PREFIX.as_ref(), eth_address_1.as_ref()].concat(),
-    )
-    .unwrap();
-    create_sender(
-        &mut context,
-        &reward_manager.pubkey(),
-        &manager_account,
-        eth_address_1,
-        collided_operator,
-    )
-    .await;
-
-    let mut rng = thread_rng();
+    // Generate data and create oracle 
     let key: [u8; 32] = rng.gen();
     let oracle_priv_key = SecretKey::parse(&key).unwrap();
-    let secp_pubkey = PublicKey::from_secret_key(&oracle_priv_key);
-    let eth_address_2 = construct_eth_pubkey(&secp_pubkey);
+    let secp_oracle_pubkey = PublicKey::from_secret_key(&oracle_priv_key);
+    let eth_oracle_address = construct_eth_pubkey(&secp_oracle_pubkey);
+    let oracle_operator: EthereumAddress = rng.gen();
 
-    let second_sender = get_address_pair(
+    let oracle = get_address_pair(
         &audius_reward_manager::id(),
         &reward_manager.pubkey(),
-        [SENDER_SEED_PREFIX.as_ref(), eth_address_2.as_ref()].concat(),
+        [SENDER_SEED_PREFIX.as_ref(), eth_oracle_address.as_ref()].concat(),
     )
     .unwrap();
     create_sender(
         &mut context,
         &reward_manager.pubkey(),
         &manager_account,
-        eth_address_2,
-        collided_operator,
+        eth_oracle_address,
+        oracle_operator,
     )
     .await;
 
+    // Generate data and create senders 
+    let keys: [[u8; 32]; 3] = rng.gen();
+    let collided_operator = rng.gen();
+    let mut signers: [Pubkey; 3] = unsafe { MaybeUninit::zeroed().assume_init() };
+    for item in keys.iter().enumerate() {
+        let sender_priv_key = SecretKey::parse(item.1).unwrap();
+        let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
+        let eth_address = construct_eth_pubkey(&secp_pubkey);
+
+        let pair = get_address_pair(
+            &audius_reward_manager::id(),
+            &reward_manager.pubkey(),
+            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
+        )
+        .unwrap();
+
+        signers[item.0] = pair.derive.address;
+    }
+
+    for key in &keys {
+        let sender_priv_key = SecretKey::parse(key).unwrap();
+        let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
+        let eth_address = construct_eth_pubkey(&secp_pubkey);
+        create_sender(
+            &mut context,
+            &reward_manager.pubkey(),
+            &manager_account,
+            eth_address,
+            collided_operator,
+        )
+        .await;
+    }
+    
     let tokens_amount = 10_000;
 
     mint_tokens_to(
@@ -614,7 +629,7 @@ async fn repeating_operators() {
         b"_",
         transfer_id.as_ref(),
         b"_",
-        eth_address_2.as_ref(),
+        eth_oracle_address.as_ref(),
     ]
     .concat();
 
@@ -627,31 +642,39 @@ async fn repeating_operators() {
     ]
     .concat();
 
-    let sender_secp256_program_instruction =
-        new_secp256k1_instruction_2_0(&sender_priv_key, senders_message.as_ref(), 0);
-    let oracle_secp256_program_instruction =
-        new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 1);
+    let mut instructions = Vec::<Instruction>::new();
+
+    let oracle_sign =
+        new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 0);
+    instructions.push(oracle_sign);
+    
+    let iter = keys.iter().enumerate().map(|i| (i.0+1, i.1));
+    for item in iter {
+        let priv_key = SecretKey::parse(item.1).unwrap();
+        let inst = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), item.0 as _);
+        instructions.push(inst);
+    }
+
+    instructions.push(
+        instruction::transfer(
+            &audius_reward_manager::id(),
+            &reward_manager.pubkey(),
+            &recipient_sol_key.derive.address,
+            &token_account.pubkey(),
+            &oracle.derive.address,  
+            &context.payer.pubkey(),
+            std::array::IntoIter::new(signers),
+            instruction::Transfer {
+                amount: tokens_amount,
+                id: String::from(transfer_id),
+                eth_recipient: recipient_eth_key,
+            },
+        )
+        .unwrap()
+    );
 
     let tx = Transaction::new_signed_with_payer(
-        &[
-            sender_secp256_program_instruction,
-            oracle_secp256_program_instruction,
-            instruction::transfer(
-                &audius_reward_manager::id(),
-                &reward_manager.pubkey(),
-                &recipient_sol_key.derive.address,
-                &token_account.pubkey(),
-                &second_sender.derive.address,
-                &context.payer.pubkey(),
-                vec![first_sender.derive.address],
-                instruction::Transfer {
-                    amount: tokens_amount,
-                    id: String::from(transfer_id),
-                    eth_recipient: recipient_eth_key,
-                },
-            )
-            .unwrap(),
-        ],
+        &instructions,
         Some(&context.payer.pubkey()),
         &[&context.payer],
         context.last_blockhash,
@@ -665,7 +688,7 @@ async fn repeating_operators() {
             .unwrap_err()
             .unwrap(),
         TransactionError::InstructionError(
-            1,
+            4,
             InstructionError::Custom(AudiusProgramError::OperatorCollision as _)
         )
     );
