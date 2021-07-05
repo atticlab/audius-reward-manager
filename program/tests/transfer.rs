@@ -1,6 +1,7 @@
 #![cfg(feature = "test-bpf")]
 mod utils;
 use audius_reward_manager::{
+    error::AudiusProgramError,
     instruction,
     processor::{
         SENDER_SEED_PREFIX, TRANSFER_ACC_BALANCE, TRANSFER_ACC_SPACE, TRANSFER_SEED_PREFIX,
@@ -12,7 +13,11 @@ use secp256k1::{PublicKey, SecretKey};
 use solana_program::program_pack::Pack;
 use solana_program_test::*;
 use solana_sdk::{
-    secp256k1_instruction::*, signature::Keypair, signer::Signer, transaction::Transaction,
+    instruction::InstructionError,
+    secp256k1_instruction::*,
+    signature::Keypair,
+    signer::Signer,
+    transaction::{Transaction, TransactionError},
 };
 use utils::*;
 
@@ -291,17 +296,6 @@ async fn secp_missing() {
 
     let transfer_id = "4r4t23df32543f55";
 
-    let senders_message = [
-        recipient_eth_key.as_ref(),
-        b"_",
-        tokens_amount.to_le_bytes().as_ref(),
-        b"_",
-        transfer_id.as_ref(),
-        b"_",
-        eth_address_2.as_ref(),
-    ]
-    .concat();
-
     let bot_oracle_message = [
         recipient_eth_key.as_ref(),
         b"_",
@@ -338,25 +332,18 @@ async fn secp_missing() {
         context.last_blockhash,
     );
 
-    context.banks_client.process_transaction(tx).await.unwrap();
-
-    let transfer_acc_created = get_address_pair(
-        &audius_reward_manager::id(),
-        &reward_manager.pubkey(),
-        [
-            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-            transfer_id.as_ref(),
-        ]
-        .concat(),
-    )
-    .unwrap();
-
-    let transfer_acc_data = get_account(&mut context, &transfer_acc_created.derive.address)
-        .await
-        .unwrap();
-
-    assert_eq!(transfer_acc_data.lamports, TRANSFER_ACC_BALANCE as u64);
-    assert_eq!(transfer_acc_data.data.len() as u8, TRANSFER_ACC_SPACE);
+    assert_eq!(
+        context
+            .banks_client
+            .process_transaction(tx)
+            .await
+            .unwrap_err()
+            .unwrap(),
+        TransactionError::InstructionError(
+            1,
+            InstructionError::Custom(AudiusProgramError::Secp256InstructionMissing as _)
+        )
+    );
 }
 
 #[tokio::test]
@@ -505,25 +492,18 @@ async fn oracle_sign_missing() {
         context.last_blockhash,
     );
 
-    context.banks_client.process_transaction(tx).await.unwrap();
-
-    let transfer_acc_created = get_address_pair(
-        &audius_reward_manager::id(),
-        &reward_manager.pubkey(),
-        [
-            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-            transfer_id.as_ref(),
-        ]
-        .concat(),
-    )
-    .unwrap();
-
-    let transfer_acc_data = get_account(&mut context, &transfer_acc_created.derive.address)
-        .await
-        .unwrap();
-
-    assert_eq!(transfer_acc_data.lamports, TRANSFER_ACC_BALANCE as u64);
-    assert_eq!(transfer_acc_data.data.len() as u8, TRANSFER_ACC_SPACE);
+    assert_eq!(
+        context
+            .banks_client
+            .process_transaction(tx)
+            .await
+            .unwrap_err()
+            .unwrap(),
+        TransactionError::InstructionError(
+            1,
+            InstructionError::Custom(AudiusProgramError::Secp256InstructionMissing as _)
+        )
+    );
 }
 
 #[tokio::test]
@@ -677,29 +657,22 @@ async fn repeating_operators() {
         context.last_blockhash,
     );
 
-    context.banks_client.process_transaction(tx).await.unwrap();
-
-    let transfer_acc_created = get_address_pair(
-        &audius_reward_manager::id(),
-        &reward_manager.pubkey(),
-        [
-            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-            transfer_id.as_ref(),
-        ]
-        .concat(),
-    )
-    .unwrap();
-
-    let transfer_acc_data = get_account(&mut context, &transfer_acc_created.derive.address)
-        .await
-        .unwrap();
-
-    assert_eq!(transfer_acc_data.lamports, TRANSFER_ACC_BALANCE as u64);
-    assert_eq!(transfer_acc_data.data.len() as u8, TRANSFER_ACC_SPACE);
+    assert_eq!(
+        context
+            .banks_client
+            .process_transaction(tx)
+            .await
+            .unwrap_err()
+            .unwrap(),
+        TransactionError::InstructionError(
+            1,
+            InstructionError::Custom(AudiusProgramError::OperatorCollision as _)
+        )
+    );
 }
 
 #[tokio::test]
 async fn repeating_ids() {
     // Repeating transfer with the same ids
-    // ???? 
+    // ????
 }
