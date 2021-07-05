@@ -210,7 +210,6 @@ pub fn get_eth_addresses<'a>(
         if senders_eth_addresses.contains(&signer_data.eth_address) {
             return Err(AudiusProgramError::RepeatedSenders.into());
         }
-        msg!("operator: {:?}", signer_data.operator);
         if !operators.insert(signer_data.operator) {
             return Err(AudiusProgramError::OperatorCollision.into());
         }
