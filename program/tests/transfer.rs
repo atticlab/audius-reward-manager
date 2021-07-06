@@ -15,6 +15,7 @@ use solana_sdk::{
     signature::Keypair,
     signer::Signer,
     transaction::{Transaction, TransactionError},
+    system_instruction::SystemError,
 };
 use utils::*;
 
@@ -1004,7 +1005,7 @@ async fn repeating_ids() {
         &mint.pubkey(),
         &token_account.pubkey(),
         &mint_authority,
-        tokens_amount,
+        tokens_amount*2,
     )
     .await
     .unwrap();
@@ -1079,5 +1080,26 @@ async fn repeating_ids() {
     );
 
     context.banks_client.process_transaction(tx.clone()).await.unwrap();
-    context.banks_client.process_transaction(tx).await.unwrap();
+
+    context.warp_to_slot(10);
+
+    let tx = Transaction::new_signed_with_payer(
+        &instructions,
+        Some(&context.payer.pubkey()),
+        &[&context.payer],
+        context.last_blockhash,
+    );
+
+    assert_eq!(
+        context
+            .banks_client
+            .process_transaction(tx)
+            .await
+            .unwrap_err()
+            .unwrap(),
+        TransactionError::InstructionError(
+            4,
+            InstructionError::Custom(SystemError::AccountAlreadyInUse as _)
+        )
+    );
 }
