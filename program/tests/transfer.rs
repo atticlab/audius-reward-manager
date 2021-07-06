@@ -2,9 +2,14 @@
 mod utils;
 use std::mem::MaybeUninit;
 
-use audius_reward_manager::{error::AudiusProgramError, instruction, processor::{
+use audius_reward_manager::{
+    error::AudiusProgramError,
+    instruction,
+    processor::{
         SENDER_SEED_PREFIX, TRANSFER_ACC_BALANCE, TRANSFER_ACC_SPACE, TRANSFER_SEED_PREFIX,
-    }, utils::{EthereumAddress, get_address_pair}};
+    },
+    utils::{get_address_pair, EthereumAddress},
+};
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
 use solana_program::{instruction::Instruction, program_pack::Pack, pubkey::Pubkey};
@@ -14,8 +19,8 @@ use solana_sdk::{
     secp256k1_instruction::*,
     signature::Keypair,
     signer::Signer,
-    transaction::{Transaction, TransactionError},
     system_instruction::SystemError,
+    transaction::{Transaction, TransactionError},
 };
 use utils::*;
 
@@ -23,7 +28,7 @@ use utils::*;
 async fn transfer_test() {
     let mut program_test = program_test();
     program_test.add_program("claimable_tokens", claimable_tokens::id(), None);
-    let mut rng = thread_rng();    
+    let mut rng = thread_rng();
 
     let mut context = program_test.start_with_context().await;
 
@@ -55,7 +60,7 @@ async fn transfer_test() {
     )
     .await;
 
-    // Generate data and create oracle 
+    // Generate data and create oracle
     let key: [u8; 32] = rng.gen();
     let oracle_priv_key = SecretKey::parse(&key).unwrap();
     let secp_oracle_pubkey = PublicKey::from_secret_key(&oracle_priv_key);
@@ -77,7 +82,7 @@ async fn transfer_test() {
     )
     .await;
 
-    // Generate data and create senders 
+    // Generate data and create senders
     let keys: [[u8; 32]; 3] = rng.gen();
     let operators: [EthereumAddress; 3] = rng.gen();
     let mut signers: [Pubkey; 3] = unsafe { MaybeUninit::zeroed().assume_init() };
@@ -109,7 +114,7 @@ async fn transfer_test() {
         )
         .await;
     }
-    
+
     let tokens_amount = 10_000;
 
     mint_tokens_to(
@@ -158,8 +163,8 @@ async fn transfer_test() {
     let oracle_sign =
         new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 0);
     instructions.push(oracle_sign);
-    
-    let iter = keys.iter().enumerate().map(|i| (i.0+1, i.1));
+
+    let iter = keys.iter().enumerate().map(|i| (i.0 + 1, i.1));
     for item in iter {
         let priv_key = SecretKey::parse(item.1).unwrap();
         let inst = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), item.0 as _);
@@ -172,7 +177,7 @@ async fn transfer_test() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,  
+            &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::Transfer {
@@ -181,7 +186,7 @@ async fn transfer_test() {
                 eth_recipient: recipient_eth_key,
             },
         )
-        .unwrap()
+        .unwrap(),
     );
 
     let tx = Transaction::new_signed_with_payer(
@@ -368,7 +373,7 @@ async fn secp_missing() {
 async fn different_oracles_mentiones() {
     let mut program_test = program_test();
     program_test.add_program("claimable_tokens", claimable_tokens::id(), None);
-    let mut rng = thread_rng();    
+    let mut rng = thread_rng();
 
     let mut context = program_test.start_with_context().await;
 
@@ -400,7 +405,7 @@ async fn different_oracles_mentiones() {
     )
     .await;
 
-    // Generate data and create oracle 
+    // Generate data and create oracle
     let key: [u8; 32] = rng.gen();
     let oracle_priv_key = SecretKey::parse(&key).unwrap();
     let secp_oracle_pubkey = PublicKey::from_secret_key(&oracle_priv_key);
@@ -423,7 +428,7 @@ async fn different_oracles_mentiones() {
     )
     .await;
 
-    // Generate data and create senders 
+    // Generate data and create senders
     let keys: [[u8; 32]; 3] = rng.gen();
     let operators: [EthereumAddress; 3] = rng.gen();
     let mut signers: [Pubkey; 3] = unsafe { MaybeUninit::zeroed().assume_init() };
@@ -455,7 +460,7 @@ async fn different_oracles_mentiones() {
         )
         .await;
     }
-    
+
     let tokens_amount = 10_000;
 
     mint_tokens_to(
@@ -515,11 +520,11 @@ async fn different_oracles_mentiones() {
     let oracle_sign =
         new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 0);
     instructions.push(oracle_sign);
-    
-    let iter = keys.iter().enumerate().map(|i| (i.0+1, i.1));
+
+    let iter = keys.iter().enumerate().map(|i| (i.0 + 1, i.1));
     for item in iter {
         let priv_key = SecretKey::parse(item.1).unwrap();
-        // The first message will sign with the wrong oracle mention, and all following have the correct sign 
+        // The first message will sign with the wrong oracle mention, and all following have the correct sign
         let inst = if item.0 == 1 {
             new_secp256k1_instruction_2_0(&priv_key, sender_with_wrong_oracle.as_ref(), item.0 as _)
         } else {
@@ -534,7 +539,7 @@ async fn different_oracles_mentiones() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,  
+            &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::Transfer {
@@ -543,7 +548,7 @@ async fn different_oracles_mentiones() {
                 eth_recipient: recipient_eth_key,
             },
         )
-        .unwrap()
+        .unwrap(),
     );
 
     let tx = Transaction::new_signed_with_payer(
@@ -725,7 +730,7 @@ async fn oracle_sign_missing() {
 async fn repeating_operators() {
     let mut program_test = program_test();
     program_test.add_program("claimable_tokens", claimable_tokens::id(), None);
-    let mut rng = thread_rng();    
+    let mut rng = thread_rng();
 
     let mut context = program_test.start_with_context().await;
 
@@ -757,7 +762,7 @@ async fn repeating_operators() {
     )
     .await;
 
-    // Generate data and create oracle 
+    // Generate data and create oracle
     let key: [u8; 32] = rng.gen();
     let oracle_priv_key = SecretKey::parse(&key).unwrap();
     let secp_oracle_pubkey = PublicKey::from_secret_key(&oracle_priv_key);
@@ -779,7 +784,7 @@ async fn repeating_operators() {
     )
     .await;
 
-    // Generate data and create senders 
+    // Generate data and create senders
     let keys: [[u8; 32]; 3] = rng.gen();
     let collided_operator = rng.gen();
     let mut signers: [Pubkey; 3] = unsafe { MaybeUninit::zeroed().assume_init() };
@@ -811,7 +816,7 @@ async fn repeating_operators() {
         )
         .await;
     }
-    
+
     let tokens_amount = 10_000;
 
     mint_tokens_to(
@@ -860,8 +865,8 @@ async fn repeating_operators() {
     let oracle_sign =
         new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 0);
     instructions.push(oracle_sign);
-    
-    let iter = keys.iter().enumerate().map(|i| (i.0+1, i.1));
+
+    let iter = keys.iter().enumerate().map(|i| (i.0 + 1, i.1));
     for item in iter {
         let priv_key = SecretKey::parse(item.1).unwrap();
         let inst = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), item.0 as _);
@@ -874,7 +879,7 @@ async fn repeating_operators() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,  
+            &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::Transfer {
@@ -883,7 +888,7 @@ async fn repeating_operators() {
                 eth_recipient: recipient_eth_key,
             },
         )
-        .unwrap()
+        .unwrap(),
     );
 
     let tx = Transaction::new_signed_with_payer(
@@ -911,7 +916,7 @@ async fn repeating_operators() {
 async fn repeating_ids() {
     let mut program_test = program_test();
     program_test.add_program("claimable_tokens", claimable_tokens::id(), None);
-    let mut rng = thread_rng();    
+    let mut rng = thread_rng();
 
     let mut context = program_test.start_with_context().await;
 
@@ -943,7 +948,7 @@ async fn repeating_ids() {
     )
     .await;
 
-    // Generate data and create oracle 
+    // Generate data and create oracle
     let key: [u8; 32] = rng.gen();
     let oracle_priv_key = SecretKey::parse(&key).unwrap();
     let secp_oracle_pubkey = PublicKey::from_secret_key(&oracle_priv_key);
@@ -965,7 +970,7 @@ async fn repeating_ids() {
     )
     .await;
 
-    // Generate data and create senders 
+    // Generate data and create senders
     let keys: [[u8; 32]; 3] = rng.gen();
     let operators: [EthereumAddress; 3] = rng.gen();
     let mut signers: [Pubkey; 3] = unsafe { MaybeUninit::zeroed().assume_init() };
@@ -997,7 +1002,7 @@ async fn repeating_ids() {
         )
         .await;
     }
-    
+
     let tokens_amount = 10_000;
 
     mint_tokens_to(
@@ -1005,7 +1010,7 @@ async fn repeating_ids() {
         &mint.pubkey(),
         &token_account.pubkey(),
         &mint_authority,
-        tokens_amount*2,
+        tokens_amount * 2,
     )
     .await
     .unwrap();
@@ -1046,8 +1051,8 @@ async fn repeating_ids() {
     let oracle_sign =
         new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 0);
     instructions.push(oracle_sign);
-    
-    let iter = keys.iter().enumerate().map(|i| (i.0+1, i.1));
+
+    let iter = keys.iter().enumerate().map(|i| (i.0 + 1, i.1));
     for item in iter {
         let priv_key = SecretKey::parse(item.1).unwrap();
         let inst = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), item.0 as _);
@@ -1060,7 +1065,7 @@ async fn repeating_ids() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,  
+            &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::Transfer {
@@ -1069,7 +1074,7 @@ async fn repeating_ids() {
                 eth_recipient: recipient_eth_key,
             },
         )
-        .unwrap()
+        .unwrap(),
     );
 
     let tx = Transaction::new_signed_with_payer(
@@ -1079,7 +1084,11 @@ async fn repeating_ids() {
         context.last_blockhash,
     );
 
-    context.banks_client.process_transaction(tx.clone()).await.unwrap();
+    context
+        .banks_client
+        .process_transaction(tx.clone())
+        .await
+        .unwrap();
 
     context.warp_to_slot(10);
 

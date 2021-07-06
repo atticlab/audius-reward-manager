@@ -7,7 +7,17 @@ use crate::{
     state::SenderAccount,
 };
 use borsh::BorshDeserialize;
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, instruction::Instruction, msg, program::invoke_signed, program_error::ProgramError, program_pack::IsInitialized, pubkey::{Pubkey, PubkeyError}, secp256k1_program, system_instruction, sysvar};
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    instruction::Instruction,
+    msg,
+    program::invoke_signed,
+    program_error::ProgramError,
+    program_pack::IsInitialized,
+    pubkey::{Pubkey, PubkeyError},
+    secp256k1_program, system_instruction, sysvar,
+};
 use std::collections::BTreeSet;
 use std::{collections::BTreeMap, convert::TryInto};
 
@@ -183,7 +193,7 @@ pub fn get_eth_addresses<'a>(
     program_id: &Pubkey,
     reward_manager_key: &Pubkey,
     signers: Vec<&AccountInfo<'a>>,
-) -> Result<Vec<EthereumAddress>, ProgramError> {
+) -> Result<(Vec<EthereumAddress>, BTreeSet<EthereumAddress>), ProgramError> {
     let mut senders_eth_addresses: Vec<EthereumAddress> = Vec::new();
     let mut operators = BTreeSet::<EthereumAddress>::new();
 
@@ -216,7 +226,7 @@ pub fn get_eth_addresses<'a>(
         senders_eth_addresses.push(signer_data.eth_address);
     }
 
-    Ok(senders_eth_addresses)
+    Ok((senders_eth_addresses, operators))
 }
 
 pub fn get_signer_from_secp_instruction(secp_instruction_data: Vec<u8>) -> EthereumAddress {
@@ -241,7 +251,8 @@ pub fn validate_eth_signature(
     Ok(())
 }
 
-pub trait VerifierFn = FnOnce(Vec<Instruction>, Vec<EthereumAddress>) -> ProgramResult;
+pub trait VerifierFn =
+    FnOnce(Vec<Instruction>, Vec<EthereumAddress>, BTreeSet<EthereumAddress>) -> ProgramResult;
 
 fn vec_into_checkmap(vec: &Vec<EthereumAddress>) -> BTreeMap<EthereumAddress, bool> {
     let mut map = BTreeMap::new();
@@ -268,12 +279,15 @@ fn check_signer(
 }
 
 pub fn build_verify_secp_transfer(
-    bot_oracle: EthereumAddress,
+    bot_oracle: SenderAccount,
     transfer_data: Transfer,
 ) -> impl VerifierFn {
     return Box::new(
-        move |instructions: Vec<Instruction>, signers: Vec<EthereumAddress>| {
+        move |instructions: Vec<Instruction>,
+              signers: Vec<EthereumAddress>,
+              mut operators: BTreeSet<EthereumAddress>| {
             let mut successful_verifications = 0;
+            let mut checkmap = vec_into_checkmap(&signers);
 
             let bot_oracle_message = [
                 transfer_data.eth_recipient.as_ref(),
@@ -291,16 +305,17 @@ pub fn build_verify_secp_transfer(
                 b"_",
                 transfer_data.id.as_ref(),
                 b"_",
-                bot_oracle.as_ref(),
+                bot_oracle.eth_address.as_ref(),
             ]
             .concat();
 
-            let mut checkmap = vec_into_checkmap(&signers);
-
             for instruction in instructions {
                 let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
-                if eth_signer == bot_oracle {
+                if eth_signer == bot_oracle.eth_address {
                     validate_eth_signature(bot_oracle_message.as_ref(), instruction.data.clone())?;
+                    if !operators.insert(bot_oracle.operator) {
+                        return Err(AudiusProgramError::OperatorCollision.into());
+                    }
                     successful_verifications += 1;
                 }
                 if signers.contains(&eth_signer) {
@@ -325,7 +340,9 @@ pub fn build_verify_secp_add_sender(
     new_sender: EthereumAddress,
 ) -> impl VerifierFn {
     return Box::new(
-        move |instructions: Vec<Instruction>, signers: Vec<EthereumAddress>| {
+        move |instructions: Vec<Instruction>,
+              signers: Vec<EthereumAddress>,
+              _operators: BTreeSet<EthereumAddress>| {
             let mut checkmap = vec_into_checkmap(&signers);
 
             let expected_message = [reward_manager_key.as_ref(), new_sender.as_ref()].concat();

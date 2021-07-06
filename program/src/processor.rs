@@ -187,7 +187,7 @@ impl Processor {
         instruction_info: &AccountInfo,
         expected_signers: Vec<&AccountInfo>,
         extraction_depth: usize,
-        verifier: impl FnOnce(Vec<Instruction>, Vec<EthereumAddress>) -> ProgramResult,
+        verifier: impl VerifierFn,
     ) -> ProgramResult {
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
         if expected_signers.len() < reward_manager.min_votes as _ {
@@ -203,10 +203,10 @@ impl Processor {
 
         let secp_instructions = get_secp_instructions(index, extraction_depth, instruction_info)?;
 
-        let senders_eth_addresses =
+        let (senders_eth_addresses, operators_set) =
             get_eth_addresses(program_id, reward_manager_info.key, expected_signers)?;
 
-        verifier(secp_instructions, senders_eth_addresses)
+        verifier(secp_instructions, senders_eth_addresses, operators_set)
     }
 
     fn process_add_sender<'a>(
@@ -334,8 +334,7 @@ impl Processor {
             return Err(AudiusProgramError::WrongRecipientKey.into());
         }
 
-        let verifier =
-            build_verify_secp_transfer(bot_oracle_data.eth_address, transfer_data.clone());
+        let verifier = build_verify_secp_transfer(bot_oracle_data, transfer_data.clone());
         Self::check_secp_signs(
             program_id,
             reward_manager,
