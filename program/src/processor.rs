@@ -355,8 +355,8 @@ impl Processor {
         )?;
 
         // Additional check to prevent existing account creation on mainnet
-        if transfer_acc_to_create.lamports() > 0 || transfer_acc_to_create.data_len() <= 0 {
-            return Err(ProgramError::Custom(SystemError::AccountAlreadyInUse as _));
+        if transfer_acc_to_create.lamports() > 0 || transfer_acc_to_create.data_len() > 0 {
+            return Err(AudiusProgramError::AlreadySent.into());
         }
 
         create_account_with_seed(

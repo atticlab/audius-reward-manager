@@ -60,6 +60,10 @@ pub enum AudiusProgramError {
     /// Some signers have same operators
     #[error("Some signers have same operators")]
     OperatorCollision,
+
+    /// Funds already sent
+    #[error("Funds already sent")]
+    AlreadySent,
 }
 impl From<AudiusProgramError> for ProgramError {
     fn from(e: AudiusProgramError) -> Self {

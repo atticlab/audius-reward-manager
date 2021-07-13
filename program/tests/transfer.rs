@@ -1112,7 +1112,7 @@ async fn repeating_ids() {
             .unwrap(),
         TransactionError::InstructionError(
             4,
-            InstructionError::Custom(SystemError::AccountAlreadyInUse as _)
+            InstructionError::Custom(AudiusProgramError::AlreadySent as _)
         )
     );
 }
