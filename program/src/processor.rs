@@ -12,7 +12,6 @@ use solana_program::{
     account_info::next_account_info,
     account_info::AccountInfo,
     entrypoint::ProgramResult,
-    instruction::Instruction,
     msg,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
@@ -20,7 +19,8 @@ use solana_program::{
     program_pack::Pack,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction, sysvar,
+    system_instruction::{self, SystemError},
+    sysvar,
     sysvar::Sysvar,
 };
 use spl_token::state::Account as TokenAccount;
@@ -353,6 +353,13 @@ impl Processor {
             reward_manager_authority,
             transfer_data.amount,
         )?;
+
+        // Additional check to prevent existing account creation on mainnet
+        if transfer_acc_to_create.lamports() == TRANSFER_ACC_BALANCE as u64
+            && transfer_acc_to_create.data_len() == TRANSFER_ACC_SPACE as usize
+        {
+            return Err(ProgramError::Custom(SystemError::AccountAlreadyInUse as _));
+        }
 
         create_account_with_seed(
             program_id,
