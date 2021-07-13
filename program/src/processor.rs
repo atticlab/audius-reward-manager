@@ -12,7 +12,6 @@ use solana_program::{
     account_info::next_account_info,
     account_info::AccountInfo,
     entrypoint::ProgramResult,
-    instruction::Instruction,
     msg,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
@@ -20,7 +19,8 @@ use solana_program::{
     program_pack::Pack,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction, sysvar,
+    system_instruction::{self, SystemError},
+    sysvar,
     sysvar::Sysvar,
 };
 use spl_token::state::Account as TokenAccount;
@@ -353,6 +353,11 @@ impl Processor {
             reward_manager_authority,
             transfer_data.amount,
         )?;
+
+        // Additional check to prevent existing account creation on mainnet
+        if transfer_acc_to_create.lamports() > 0 || transfer_acc_to_create.data_len() > 0 {
+            return Err(AudiusProgramError::AlreadySent.into());
+        }
 
         create_account_with_seed(
             program_id,
