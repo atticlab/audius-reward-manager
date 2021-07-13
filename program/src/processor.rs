@@ -355,9 +355,7 @@ impl Processor {
         )?;
 
         // Additional check to prevent existing account creation on mainnet
-        if transfer_acc_to_create.lamports() == TRANSFER_ACC_BALANCE as u64
-            && transfer_acc_to_create.data_len() == TRANSFER_ACC_SPACE as usize
-        {
+        if transfer_acc_to_create.lamports() > 0 || transfer_acc_to_create.data_len() <= 0 {
             return Err(ProgramError::Custom(SystemError::AccountAlreadyInUse as _));
         }
 
