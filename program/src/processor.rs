@@ -19,8 +19,7 @@ use solana_program::{
     program_pack::Pack,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction::{self, SystemError},
-    sysvar,
+    system_instruction, sysvar,
     sysvar::Sysvar,
 };
 use spl_token::state::Account as TokenAccount;
@@ -29,10 +28,8 @@ use spl_token::state::Account as TokenAccount;
 pub const SENDER_SEED_PREFIX: &str = "S_";
 /// Transfer program account seed
 pub const TRANSFER_SEED_PREFIX: &str = "T_";
-/// Transfer account balance
-pub const TRANSFER_ACC_BALANCE: u8 = 1;
 /// Transfer account space
-pub const TRANSFER_ACC_SPACE: u8 = 0;
+pub const TRANSFER_ACC_SPACE: usize = 0;
 
 /// Program state handler.
 pub struct Processor;
@@ -279,6 +276,7 @@ impl Processor {
         funder: &AccountInfo<'a>,
         transfer_acc_to_create: &AccountInfo<'a>,
         instruction_info: &AccountInfo<'a>,
+        rent_info: &AccountInfo<'a>,
         transfer_data: Transfer,
         senders: Vec<&AccountInfo<'a>>,
     ) -> ProgramResult {
@@ -359,6 +357,7 @@ impl Processor {
             return Err(AudiusProgramError::AlreadySent.into());
         }
 
+        let rent = Rent::from_account_info(rent_info)?;
         create_account_with_seed(
             program_id,
             funder,
@@ -370,7 +369,7 @@ impl Processor {
                 transfer_data.id.as_ref(),
             ]
             .concat(),
-            TRANSFER_ACC_BALANCE as u64,
+            rent.minimum_balance(TRANSFER_ACC_SPACE),
             TRANSFER_ACC_SPACE as u64,
             program_id,
         )
@@ -496,6 +495,7 @@ impl Processor {
                 let funder = next_account_info(account_info_iter)?;
                 let transfer_acc_to_create = next_account_info(account_info_iter)?;
                 let instruction_info = next_account_info(account_info_iter)?;
+                let rent_info = next_account_info(account_info_iter)?;
                 let _spl_token_program = next_account_info(account_info_iter)?;
                 let _system_program = next_account_info(account_info_iter)?;
 
@@ -511,6 +511,7 @@ impl Processor {
                     funder,
                     transfer_acc_to_create,
                     instruction_info,
+                    rent_info,
                     Transfer {
                         amount,
                         id,

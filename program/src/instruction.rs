@@ -104,9 +104,10 @@ pub enum Instructions {
     ///   5. `[sw]` Funder. Account which pay for new account creation
     ///   6. `[w]` Transfer account to create
     ///   7. `[]` Sysvar instruction id
-    ///   8. `[]` SPL Token id
-    ///   9. `[]` System program
-    ///   10. `[]` Senders
+    ///   8. `[]` Sysvar rent
+    ///   9. `[]` SPL Token id
+    ///   10. `[]` System program
+    ///   11. `[]` Senders
     ///   ...
     ///   n. `[]`
     Transfer(Transfer),
@@ -293,6 +294,7 @@ where
         AccountMeta::new(*funder, true),
         AccountMeta::new(transfer_acc_to_create.derive.address, false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
+        AccountMeta::new_readonly(sysvar::rent::id(), false),
         AccountMeta::new_readonly(spl_token::id(), false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];

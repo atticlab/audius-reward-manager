@@ -3,13 +3,10 @@ mod assert;
 mod utils;
 use std::mem::MaybeUninit;
 
-use assert::*;
 use audius_reward_manager::{
     error::AudiusProgramError,
     instruction,
-    processor::{
-        SENDER_SEED_PREFIX, TRANSFER_ACC_BALANCE, TRANSFER_ACC_SPACE, TRANSFER_SEED_PREFIX,
-    },
+    processor::{SENDER_SEED_PREFIX, TRANSFER_ACC_SPACE, TRANSFER_SEED_PREFIX},
     utils::{get_address_pair, EthereumAddress},
 };
 use num_traits::FromPrimitive;
@@ -22,7 +19,6 @@ use solana_sdk::{
     secp256k1_instruction::*,
     signature::Keypair,
     signer::Signer,
-    system_instruction::SystemError,
     transaction::{Transaction, TransactionError},
     transport::TransportError,
 };
@@ -217,8 +213,11 @@ async fn transfer_test() {
         .await
         .unwrap();
 
-    assert_eq!(transfer_acc_data.lamports, TRANSFER_ACC_BALANCE as u64);
-    assert_eq!(transfer_acc_data.data.len() as u8, TRANSFER_ACC_SPACE);
+    assert_eq!(
+        transfer_acc_data.lamports,
+        rent.minimum_balance(TRANSFER_ACC_SPACE)
+    );
+    assert_eq!(transfer_acc_data.data.len(), TRANSFER_ACC_SPACE);
 }
 
 #[tokio::test]
