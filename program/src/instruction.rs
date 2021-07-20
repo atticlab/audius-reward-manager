@@ -94,6 +94,12 @@ pub enum Instructions {
     /// n. `[r]`  old_sender_n
     AddSender(AddSender),
 
+    ///
+    ///
+    /// 0. `[w]` `Verified Messages`
+    /// 1. `[]`  Sender
+    VerifyTransferSignature,
+
     ///   Transfer tokens to pointed receiver
     ///
     ///   0. `[]` `Reward Manager`
@@ -250,6 +256,26 @@ where
         .into_iter()
         .map(|i| AccountMeta::new_readonly(*i, false));
     accounts.extend(iter);
+
+    Ok(Instruction {
+        program_id: *program_id,
+        accounts,
+        data,
+    })
+}
+
+/// Create `VerifyTransferSignature` instruction
+pub fn verify<I>(
+    program_id: &Pubkey,
+    messages_holder: &Pubkey,
+    sender: &Pubkey,
+) -> Result<Instruction, ProgramError> {
+    let data = Instructions::VerifyTransferSignature.try_to_vec()?;
+
+    let mut accounts = vec![
+        AccountMeta::new(*messages_holder, false),
+        AccountMeta::new_readonly(*sender, false),
+    ];
 
     Ok(Instruction {
         program_id: *program_id,

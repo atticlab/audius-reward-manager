@@ -43,7 +43,6 @@ impl IsInitialized for RewardManager {
     }
 }
 
-/// Some doc
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub struct SenderAccount {
     /// Version
@@ -76,6 +75,36 @@ impl SenderAccount {
 }
 
 impl IsInitialized for SenderAccount {
+    fn is_initialized(&self) -> bool {
+        self.version != UNINITIALIZED_VERSION
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+struct SignedPayload {
+    pub address: EthereumAddress,
+    pub message: [u8; 64],
+}
+
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+pub struct MessagesHolder {
+    /// Version
+    pub version: u8,
+    pub reward_manager: Pubkey,
+    pub signs: Vec<SignedPayload>,
+}
+
+impl MessagesHolder {
+    pub fn new(reward_manager: Pubkey) -> Self {
+        Self {
+            version: PROGRAM_VERSION,
+            reward_manager,
+            signs: vec![],
+        }
+    }
+}
+
+impl IsInitialized for MessagesHolder {
     fn is_initialized(&self) -> bool {
         self.version != UNINITIALIZED_VERSION
     }
