@@ -4,7 +4,7 @@ use crate::{
     error::AudiusProgramError,
     instruction::{AddSender, CreateSender, InitRewardManager, Instructions, Transfer},
     is_owner,
-    state::{RewardManager, SenderAccount},
+    state::{MessagesHolder, RewardManager, SenderAccount},
     utils::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -266,82 +266,160 @@ impl Processor {
         Ok(())
     }
 
+    /// Checks that message inside instruction was signed by expected signer
+    /// and it expected message
+    fn validate_eth_signature(
+        expected_signer: &EthereumAddress,
+        expected_message: &[u8],
+        secp_instruction_data: Vec<u8>,
+    ) -> Result<(), ProgramError> {
+        let eth_address_offset = 12;
+        let instruction_signer = secp_instruction_data
+            [eth_address_offset..eth_address_offset + size_of::<EthereumAddress>()]
+            .to_vec();
+        if instruction_signer != expected_signer {
+            return Err(ClaimableProgramError::SignatureVerificationFailed.into());
+        }
+
+        //NOTE: meta (12) + address (20) + signature (65) = 97
+        let message_data_offset = 97;
+        let instruction_message = secp_instruction_data[message_data_offset..].to_vec();
+        if instruction_message != *expected_message {
+            return Err(ClaimableProgramError::SignatureVerificationFailed.into());
+        }
+
+        Ok(())
+    }
+
+    /// Checks that the user signed message with his ethereum private key
+    fn check_ethereum_sign(
+        instruction_info: &AccountInfo,
+        expected_signer: &EthereumAddress,
+        expected_message: &[u8],
+    ) -> ProgramResult {
+        let index = sysvar::instructions::load_current_index(&instruction_info.data.borrow());
+
+        // instruction can't be first in transaction
+        // because must follow after `new_secp256k1_instruction`
+        if index == 0 {
+            return Err(ClaimableProgramError::Secp256InstructionLosing.into());
+        }
+
+        // load previous instruction
+        let instruction = sysvar::instructions::load_instruction_at(
+            (index - 1) as usize,
+            &instruction_info.data.borrow(),
+        )
+        .map_err(to_claimable_tokens_error)?;
+
+        // is that instruction is `new_secp256k1_instruction`
+        if instruction.program_id != secp256k1_program::id() {
+            return Err(ClaimableProgramError::Secp256InstructionLosing.into());
+        }
+
+        Self::validate_eth_signature(expected_signer, expected_message, instruction.data)
+    }
+
+    fn process_verify<'a>(
+        program_id: &Pubkey,
+        messages_holder: &AccountInfo<'a>,
+        reward_manager: &AccountInfo<'a>,
+        sender: &AccountInfo<'a>,
+        instruction_info: &AccountInfo<'a>,
+    ) -> ProgramResult {
+        let messages_holder_data = MessagesHolder::try_from_slice(&messages_holder.data.borrow())?;
+        if !messages_holder_data.is_initialized() {
+            let reward_manager_data = RewardManager::try_from_slice(&reward_manager.data.borrow())?;
+            if !reward_manager_data.is_initialized() {
+                return Err(ProgramError::UninitializedAccount);
+            }
+    
+            is_owner!(*program_id, messages_holder, reward_manager)?;
+    
+            MessagesHolder::new(*reward_manager.key)
+                .serialize(&mut *messages_holder.data.borrow_mut())?;            
+        }
+
+        check_ethereum_sign(
+            instruction_info,
+            todo!(),
+            todo!(),
+        )?;
+
+        messages_holder_data.signs.push(value);
+
+        Ok(())
+    }
+
     fn process_transfer<'a>(
         program_id: &Pubkey,
-        reward_manager: &AccountInfo<'a>,
-        reward_manager_authority: &AccountInfo<'a>,
+        messages_holder: &AccountInfo<'a>,
         recipient: &AccountInfo<'a>,
-        vault_token_account: &AccountInfo<'a>,
-        bot_oracle: &AccountInfo<'a>,
-        funder: &AccountInfo<'a>,
-        transfer_acc_to_create: &AccountInfo<'a>,
-        instruction_info: &AccountInfo<'a>,
-        rent_info: &AccountInfo<'a>,
         transfer_data: Transfer,
-        senders: Vec<&AccountInfo<'a>>,
+        transfer_acc_to_create: &AccountInfo<'a>,
+        funder: &AccountInfo<'a>,
+        // reward_manager: &AccountInfo<'a>,
+        // reward_manager_authority: &AccountInfo<'a>,
+        // vault_token_account: &AccountInfo<'a>,
+        // bot_oracle: &AccountInfo<'a>,
+        // senders: Vec<&AccountInfo<'a>>,
     ) -> ProgramResult {
-        let reward_manager_data = RewardManager::try_from_slice(&reward_manager.data.borrow())?;
-        if !reward_manager_data.is_initialized() {
+        // let reward_manager_data = RewardManager::try_from_slice(&reward_manager.data.borrow())?;
+        // if !reward_manager_data.is_initialized() {
+        //     return Err(ProgramError::UninitializedAccount);
+        // }
+
+        // let bot_oracle_data = SenderAccount::try_from_slice(&bot_oracle.data.borrow())?;
+        // if !bot_oracle_data.is_initialized() {
+        //     return Err(ProgramError::UninitializedAccount);
+        // }
+
+        // is_owner!(*program_id, reward_manager, bot_oracle)?;
+
+        // let generated_bot_oracle_key = get_address_pair(
+        //     program_id,
+        //     reward_manager.key,
+        //     [
+        //         SENDER_SEED_PREFIX.as_ref(),
+        //         bot_oracle_data.eth_address.as_ref(),
+        //     ]
+        //     .concat(),
+        // )?;
+
+        // if generated_bot_oracle_key.derive.address != *bot_oracle.key {
+        //     return Err(ProgramError::InvalidSeeds);
+        // }
+
+        // let generated_transfer_acc_to_create = get_address_pair(
+        //     program_id,
+        //     reward_manager.key,
+        //     [
+        //         TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+        //         transfer_data.id.as_ref(),
+        //     ]
+        //     .concat(),
+        // )?;
+
+        // if generated_transfer_acc_to_create.derive.address != *transfer_acc_to_create.key {
+        //     return Err(ProgramError::InvalidSeeds);
+        // }
+
+        // let vault_token_acc_data = TokenAccount::unpack(&vault_token_account.data.borrow())?;
+
+        // let generated_recipient_key = claimable_tokens::utils::program::get_address_pair(
+        //     &claimable_tokens::id(),
+        //     &vault_token_acc_data.mint,
+        //     transfer_data.eth_recipient,
+        // )?;
+
+        // if generated_recipient_key.derive.address != *recipient.key {
+        //     return Err(AudiusProgramError::WrongRecipientKey.into());
+        // }
+
+        let messages_holder_data = MessagesHolder::try_from_slice(&messages_holder.data.borrow())?;
+        if !messages_holder_data.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
         }
-
-        let bot_oracle_data = SenderAccount::try_from_slice(&bot_oracle.data.borrow())?;
-        if !bot_oracle_data.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
-
-        is_owner!(*program_id, reward_manager, bot_oracle)?;
-
-        let generated_bot_oracle_key = get_address_pair(
-            program_id,
-            reward_manager.key,
-            [
-                SENDER_SEED_PREFIX.as_ref(),
-                bot_oracle_data.eth_address.as_ref(),
-            ]
-            .concat(),
-        )?;
-
-        if generated_bot_oracle_key.derive.address != *bot_oracle.key {
-            return Err(ProgramError::InvalidSeeds);
-        }
-
-        let generated_transfer_acc_to_create = get_address_pair(
-            program_id,
-            reward_manager.key,
-            [
-                TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-                transfer_data.id.as_ref(),
-            ]
-            .concat(),
-        )?;
-
-        if generated_transfer_acc_to_create.derive.address != *transfer_acc_to_create.key {
-            return Err(ProgramError::InvalidSeeds);
-        }
-
-        let vault_token_acc_data = TokenAccount::unpack(&vault_token_account.data.borrow())?;
-
-        let generated_recipient_key = claimable_tokens::utils::program::get_address_pair(
-            &claimable_tokens::id(),
-            &vault_token_acc_data.mint,
-            transfer_data.eth_recipient,
-        )?;
-
-        if generated_recipient_key.derive.address != *recipient.key {
-            return Err(AudiusProgramError::WrongRecipientKey.into());
-        }
-
-        let verifier = build_verify_secp_transfer(bot_oracle_data, transfer_data.clone());
-        Self::check_secp_signs(
-            program_id,
-            reward_manager,
-            instruction_info,
-            senders.clone(),
-            // NOTE: +1 it's bot oracle
-            senders.len() + 1,
-            verifier,
-        )?;
 
         token_transfer(
             program_id,
@@ -520,6 +598,7 @@ impl Processor {
                     signers,
                 )
             }
+            Instructions::VerifyTransferSignature => Self::process_verify(),
         }
     }
 }
