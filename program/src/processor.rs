@@ -206,6 +206,7 @@ impl Processor {
         verifier(secp_instructions, senders_eth_addresses, operators_set)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn process_add_sender<'a>(
         program_id: &Pubkey,
         reward_manager_info: &AccountInfo<'a>,
@@ -266,6 +267,19 @@ impl Processor {
         Ok(())
     }
 
+    fn process_verify_transfer_signature<'a>(
+        program_id: &Pubkey,
+        verified_messages: &AccountInfo<'a>,
+        reward_manager: &AccountInfo<'a>,
+        sender: &AccountInfo<'a>,
+        funder: &AccountInfo<'a>,
+        instruction_info: &AccountInfo<'a>,
+        rent_info: &AccountInfo<'a>,
+    ) -> ProgramResult {
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn process_transfer<'a>(
         program_id: &Pubkey,
         reward_manager: &AccountInfo<'a>,
@@ -478,6 +492,27 @@ impl Processor {
                     signers,
                     eth_address,
                     operator,
+                )
+            }
+            Instructions::VerifyTransferSignature => {
+                msg!("Instruction: VerifyTransferSignature");
+
+                let verified_messages = next_account_info(account_info_iter)?;
+                let reward_manager = next_account_info(account_info_iter)?;
+                let sender = next_account_info(account_info_iter)?;
+                let funder = next_account_info(account_info_iter)?;
+                let instructions_info = next_account_info(account_info_iter)?;
+                let rent = next_account_info(account_info_iter)?;
+                let _system_program = next_account_info(account_info_iter)?;
+
+                Self::process_verify_transfer_signature(
+                    program_id,
+                    verified_messages,
+                    reward_manager,
+                    sender,
+                    funder,
+                    instructions_info,
+                    rent,
                 )
             }
             Instructions::Transfer(Transfer {

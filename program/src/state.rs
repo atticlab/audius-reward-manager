@@ -9,7 +9,7 @@ use crate::{utils::EthereumAddress, PROGRAM_VERSION};
 /// will have the version set to 0.
 pub const UNINITIALIZED_VERSION: u8 = 0;
 
-/// The the root entity within the program
+/// Reward manager
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub struct RewardManager {
     /// Version
@@ -43,7 +43,7 @@ impl IsInitialized for RewardManager {
     }
 }
 
-/// Some doc
+/// Sender account
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub struct SenderAccount {
     /// Version
@@ -76,6 +76,44 @@ impl SenderAccount {
 }
 
 impl IsInitialized for SenderAccount {
+    fn is_initialized(&self) -> bool {
+        self.version != UNINITIALIZED_VERSION
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+
+/// Signed payload
+pub struct SignedPayload {
+    /// Ethereum address
+    pub address: EthereumAddress,
+    /// Message
+    pub message: [u8; 128],
+}
+
+/// Verified messages
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+pub struct VerifiedMessages {
+    /// Version
+    pub version: u8,
+    /// Reward manager
+    pub reward_manager: Pubkey,
+    /// Signed payloads
+    pub signed_payloads: Vec<SignedPayload>,
+}
+
+impl VerifiedMessages {
+    /// Creates new `VerifiedMessages`
+    pub fn new(reward_manager: Pubkey) -> Self {
+        Self {
+            version: PROGRAM_VERSION,
+            reward_manager,
+            signed_payloads: vec![],
+        }
+    }
+}
+
+impl IsInitialized for VerifiedMessages {
     fn is_initialized(&self) -> bool {
         self.version != UNINITIALIZED_VERSION
     }

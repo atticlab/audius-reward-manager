@@ -1,16 +1,15 @@
 //! Instruction types
 
+use crate::{
+    processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX},
+    utils::{get_address_pair, get_base_address, EthereumAddress},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     program_error::ProgramError,
     pubkey::Pubkey,
     system_program, sysvar,
-};
-
-use crate::{
-    processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX},
-    utils::{get_address_pair, get_base_address, EthereumAddress},
 };
 
 /// `InitRewardManager` instruction parameters
@@ -52,64 +51,74 @@ pub struct Transfer {
 /// Instruction definition
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub enum Instructions {
-    ///   Initialize `Reward Manager`
+    ///   Initialize Reward manager
     ///
-    ///   0. `[w]` Account that will be initialized as `Reward Manager`.
-    ///   1. `[w]` The new account that to be initialized as the token account.
-    ///   2. `[]`  Mint with which the new token account will be associated on initialization.
-    ///   3. `[]`  Manager account to be set as the `Reward Manager`.
-    ///   4. `[]`  `Reward Manager` authority.
-    ///   5. `[]`  Token program
-    ///   6. `[]`  Rent sysvar
+    ///   0. `[writable]` Account that will be initialized as Reward manager.
+    ///   1. `[writable]` The new account that to be initialized as the token account.
+    ///   2. `[]` Mint with which the new token account will be associated on initialization.
+    ///   3. `[]` Manager account to be set as the Reward manager.
+    ///   4. `[]` Reward manager authority.
+    ///   5. `[]` Token program
+    ///   6. `[]` Rent sysvar
     InitRewardManager(InitRewardManager),
 
     ///   Admin method creating new authorized sender
     ///
-    ///   0. `[]`  `Reward Manager`
-    ///   1. `[s]` Manager account
-    ///   2. `[]`  `Reward Manager` authority
-    ///   3. `[]`  Funder account
-    ///   4. `[]`  Addidable sender
-    ///   5. `[]`  System program id
-    ///   6. `[]`  Rent sysvar
+    ///   0. `[]` Reward manager
+    ///   1. `[signer]` Manager account
+    ///   2. `[]` Reward manager authority
+    ///   3. `[]` Funder account
+    ///   4. `[]` Addidable sender
+    ///   5. `[]` System program id
+    ///   6. `[]` Rent sysvar
     CreateSender(CreateSender),
 
     ///   Admin method removing sender
     ///  
-    ///   0. `[]`   `Reward Manager`
-    ///   1. `[s]`  Manager account
-    ///   2. `[]`   `Reward Manager` authority
-    ///   3. `[w]`  Removed sender
-    ///   4. `[]`   Refunder account
+    ///   0. `[]` Reward manager
+    ///   1. `[signer]` Manager account
+    ///   2. `[]` Reward manager authority
+    ///   3. `[writable]` Removed sender
+    ///   4. `[]` Refunder account
     DeleteSender,
 
     ///
     ///
-    /// 0. `[r]`  reward_manager
-    /// 1. `[r]`  `Reward Manager` authority
-    /// 2. `[ws]` funder
-    /// 3. `[w]`  new_sender
-    /// 4. `[r]`  old_sender_0
-    /// ... Bunch of old senders which prove adding new one
-    /// n. `[r]`  old_sender_n
+    /// 0. `[]` Reward manager
+    /// 1. `[]` Reward manager authority
+    /// 2. `[signer]` Funder
+    /// 3. `[writable]` new_sender
+    /// 4. `[]` Bunch of old senders which prove adding new one
+    /// ...
     AddSender(AddSender),
+
+    ///   Verify transfer signature
+    ///
+    ///   0. `[writable]` New or existing account storing verified messages
+    ///   1. `[]` Reward manager
+    ///   2. `[]` Sender
+    ///   3. `[signer]` Funder. Account which pay for new account creation
+    ///   4. `[writable]` Transfer account to create
+    ///   5. `[]` Sysvar instruction id
+    ///   6. `[]` Sysvar rent
+    ///   7. `[]` System program
+    VerifyTransferSignature,
 
     ///   Transfer tokens to pointed receiver
     ///
-    ///   0. `[]` `Reward Manager`
-    ///   1. `[]` `Reward Manager` authority. Program account
-    ///   2. `[w]` Recipient. Key generated from Eth address
-    ///   3. `[w]` Vault with all the "reward" tokens. Program is authority
+    ///   0. `[]` Reward manager
+    ///   1. `[]` Reward manager authority. Program account
+    ///   2. `[writable]` Recipient. Key generated from Eth address
+    ///   3. `[writable]` Vault with all the "reward" tokens. Program is authority
     ///   4. `[]` Bot oracle
-    ///   5. `[sw]` Funder. Account which pay for new account creation
-    ///   6. `[w]` Transfer account to create
+    ///   5. `[signer]` Funder. Account which pay for new account creation
+    ///   6. `[writable]` Transfer account to create
     ///   7. `[]` Sysvar instruction id
     ///   8. `[]` Sysvar rent
     ///   9. `[]` SPL Token id
     ///   10. `[]` System program
     ///   11. `[]` Senders
     ///   ...
-    ///   n. `[]`
     Transfer(Transfer),
 }
 
@@ -250,6 +259,33 @@ where
         .into_iter()
         .map(|i| AccountMeta::new_readonly(*i, false));
     accounts.extend(iter);
+
+    Ok(Instruction {
+        program_id: *program_id,
+        accounts,
+        data,
+    })
+}
+
+/// Create `VerifyTransferSignature` instruction
+pub fn verify_transfer_signature<I>(
+    program_id: &Pubkey,
+    verified_messages: &Pubkey,
+    reward_manager: &Pubkey,
+    sender: &Pubkey,
+    funder: &Pubkey,
+) -> Result<Instruction, ProgramError> {
+    let data = Instructions::VerifyTransferSignature.try_to_vec()?;
+
+    let accounts = vec![
+        AccountMeta::new(*verified_messages, false),
+        AccountMeta::new_readonly(*reward_manager, false),
+        AccountMeta::new_readonly(*sender, false),
+        AccountMeta::new(*funder, true),
+        AccountMeta::new_readonly(sysvar::instructions::id(), false),
+        AccountMeta::new_readonly(sysvar::rent::id(), false),
+        AccountMeta::new_readonly(system_program::id(), false),
+    ];
 
     Ok(Instruction {
         program_id: *program_id,
