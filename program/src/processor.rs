@@ -4,7 +4,7 @@ use crate::{
     error::AudiusProgramError,
     instruction::{AddSender, CreateSender, InitRewardManager, Instructions, Transfer},
     is_owner,
-    state::{RewardManager, SenderAccount},
+    state::{RewardManager, SenderAccount, VerifiedMessages},
     utils::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -282,111 +282,60 @@ impl Processor {
     #[allow(clippy::too_many_arguments)]
     fn process_transfer<'a>(
         program_id: &Pubkey,
-        reward_manager: &AccountInfo<'a>,
-        reward_manager_authority: &AccountInfo<'a>,
-        recipient: &AccountInfo<'a>,
-        vault_token_account: &AccountInfo<'a>,
-        bot_oracle: &AccountInfo<'a>,
-        funder: &AccountInfo<'a>,
-        transfer_acc_to_create: &AccountInfo<'a>,
-        instruction_info: &AccountInfo<'a>,
+        verified_messages_info: &AccountInfo<'a>,
+        reward_manager_info: &AccountInfo<'a>,
+        reward_manager_authority_info: &AccountInfo<'a>,
+        reward_token_source_info: &AccountInfo<'a>,
+        reward_token_recipient_info: &AccountInfo<'a>,
+        transfer_account_info: &AccountInfo<'a>,
+        bot_oracle_info: &AccountInfo<'a>,
+        payer_info: &AccountInfo<'a>,
         rent_info: &AccountInfo<'a>,
         transfer_data: Transfer,
-        senders: Vec<&AccountInfo<'a>>,
     ) -> ProgramResult {
-        let reward_manager_data = RewardManager::try_from_slice(&reward_manager.data.borrow())?;
-        if !reward_manager_data.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
+        let rent = &Rent::from_account_info(rent_info)?;
 
-        let bot_oracle_data = SenderAccount::try_from_slice(&bot_oracle.data.borrow())?;
-        if !bot_oracle_data.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
+        assert_owner(program_id, verified_messages_info)?;
+        assert_owner(program_id, reward_manager_info)?;
+        assert_owner(program_id, bot_oracle_info)?;
 
-        is_owner!(*program_id, reward_manager, bot_oracle)?;
+        let verified_messages =
+            VerifiedMessages::try_from_slice(&verified_messages_info.data.borrow())?;
+        assert_initialized(&verified_messages)?;
 
-        let generated_bot_oracle_key = get_address_pair(
-            program_id,
-            reward_manager.key,
-            [
-                SENDER_SEED_PREFIX.as_ref(),
-                bot_oracle_data.eth_address.as_ref(),
-            ]
-            .concat(),
-        )?;
+        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
+        assert_initialized(&reward_manager)?;
 
-        if generated_bot_oracle_key.derive.address != *bot_oracle.key {
-            return Err(ProgramError::InvalidSeeds);
-        }
+        let bot_oracle = SenderAccount::try_from_slice(&bot_oracle_info.data.borrow())?;
+        assert_initialized(&bot_oracle)?;
 
-        let generated_transfer_acc_to_create = get_address_pair(
-            program_id,
-            reward_manager.key,
-            [
-                TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-                transfer_data.id.as_ref(),
-            ]
-            .concat(),
-        )?;
-
-        if generated_transfer_acc_to_create.derive.address != *transfer_acc_to_create.key {
-            return Err(ProgramError::InvalidSeeds);
-        }
-
-        let vault_token_acc_data = TokenAccount::unpack(&vault_token_account.data.borrow())?;
-
-        let generated_recipient_key = claimable_tokens::utils::program::get_address_pair(
-            &claimable_tokens::id(),
-            &vault_token_acc_data.mint,
-            transfer_data.eth_recipient,
-        )?;
-
-        if generated_recipient_key.derive.address != *recipient.key {
-            return Err(AudiusProgramError::WrongRecipientKey.into());
-        }
-
-        let verifier = build_verify_secp_transfer(bot_oracle_data, transfer_data.clone());
-        Self::check_secp_signs(
-            program_id,
-            reward_manager,
-            instruction_info,
-            senders.clone(),
-            // NOTE: +1 it's bot oracle
-            senders.len() + 1,
-            verifier,
-        )?;
-
+        // Transfer reward tokens to user
         token_transfer(
             program_id,
-            reward_manager.key,
-            vault_token_account,
-            recipient,
-            reward_manager_authority,
+            &reward_manager_info.key,
+            reward_token_source_info,
+            reward_token_recipient_info,
+            reward_manager_authority_info,
             transfer_data.amount,
         )?;
 
-        // Additional check to prevent existing account creation on mainnet
-        if transfer_acc_to_create.lamports() > 0 || transfer_acc_to_create.data_len() > 0 {
-            return Err(AudiusProgramError::AlreadySent.into());
-        }
+        // Pack seeds
+        let signers_seeds = &[
+            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+            transfer_data.id.as_ref(),
+        ];
 
-        let rent = Rent::from_account_info(rent_info)?;
-        create_account_with_seed(
+        // Create deterministic account on-chain
+        create_account(
             program_id,
-            funder,
-            transfer_acc_to_create,
-            reward_manager_authority,
-            reward_manager.key,
-            [
-                TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-                transfer_data.id.as_ref(),
-            ]
-            .concat(),
-            rent.minimum_balance(TRANSFER_ACC_SPACE),
-            TRANSFER_ACC_SPACE as u64,
-            program_id,
-        )
+            reward_manager_info.clone(),
+            transfer_account_info.clone(),
+            0,
+            &[signers_seeds],
+            rent,
+        )?;
+
+        Ok(())
     }
 
     /// Processes an instruction
@@ -522,37 +471,34 @@ impl Processor {
             }) => {
                 msg!("Instruction: Transfer");
 
-                let reward_manager = next_account_info(account_info_iter)?;
-                let reward_manager_authority = next_account_info(account_info_iter)?;
-                let recipient = next_account_info(account_info_iter)?;
-                let vault_token_account = next_account_info(account_info_iter)?;
-                let bot_oracle = next_account_info(account_info_iter)?;
-                let funder = next_account_info(account_info_iter)?;
-                let transfer_acc_to_create = next_account_info(account_info_iter)?;
-                let instruction_info = next_account_info(account_info_iter)?;
-                let rent_info = next_account_info(account_info_iter)?;
-                let _spl_token_program = next_account_info(account_info_iter)?;
-                let _system_program = next_account_info(account_info_iter)?;
-
-                let signers = account_info_iter.collect::<Vec<&AccountInfo>>();
+                let verified_messages_info = next_account_info(account_info_iter)?;
+                let reward_manager_info = next_account_info(account_info_iter)?;
+                let reward_manager_authority_info = next_account_info(account_info_iter)?;
+                let reward_token_source_info = next_account_info(account_info_iter)?;
+                let reward_token_recipient_info = next_account_info(account_info_iter)?;
+                let transfer_account_info = next_account_info(account_info_iter)?;
+                let bot_oracle_info = next_account_info(account_info_iter)?;
+                let payer_info = next_account_info(account_info_iter)?;
+                let _sysvar_rent = next_account_info(account_info_iter)?;
+                let _token_program_id = next_account_info(account_info_iter)?;
+                let _system_program_id = next_account_info(account_info_iter)?;
 
                 Self::process_transfer(
                     program_id,
-                    reward_manager,
-                    reward_manager_authority,
-                    recipient,
-                    vault_token_account,
-                    bot_oracle,
-                    funder,
-                    transfer_acc_to_create,
-                    instruction_info,
-                    rent_info,
+                    verified_messages_info,
+                    reward_manager_info,
+                    reward_manager_authority_info,
+                    reward_token_source_info,
+                    reward_token_recipient_info,
+                    transfer_account_info,
+                    bot_oracle_info,
+                    payer_info,
+                    _sysvar_rent,
                     Transfer {
                         amount,
                         id,
                         eth_recipient,
                     },
-                    signers,
                 )
             }
         }

@@ -13,8 +13,9 @@ use solana_program::{
     instruction::Instruction,
     program::invoke_signed,
     program_error::ProgramError,
-    program_pack::IsInitialized,
+    program_pack::{IsInitialized, Pack},
     pubkey::{Pubkey, PubkeyError},
+    rent::Rent,
     secp256k1_program, system_instruction, sysvar,
 };
 use std::collections::BTreeSet;
@@ -354,4 +355,44 @@ pub fn build_verify_secp_add_sender(
             Ok(())
         },
     );
+}
+
+/// Create account
+#[allow(clippy::too_many_arguments)]
+pub fn create_account<'a>(
+    program_id: &Pubkey,
+    from: AccountInfo<'a>,
+    to: AccountInfo<'a>,
+    space: usize,
+    signers_seeds: &[&[&[u8]]],
+    rent: &Rent,
+) -> ProgramResult {
+    let ix = system_instruction::create_account(
+        from.key,
+        to.key,
+        rent.minimum_balance(space),
+        space as u64,
+        program_id,
+    );
+
+    invoke_signed(&ix, &[from, to], signers_seeds)
+}
+
+pub fn assert_owner(owner: &Pubkey, account: &AccountInfo) -> ProgramResult {
+    if owner == account.key {
+        return Ok(());
+    }
+
+    return Err(ProgramError::IncorrectProgramId);
+}
+
+pub fn assert_initialized<A>(account: &A) -> ProgramResult
+where
+    A: IsInitialized,
+{
+    if account.is_initialized() {
+        return Ok(());
+    }
+
+    return Err(ProgramError::InvalidAccountData);
 }
