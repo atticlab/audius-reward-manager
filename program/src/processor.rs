@@ -343,19 +343,36 @@ impl Processor {
     ) -> ProgramResult {
         let rent = &Rent::from_account_info(rent_info)?;
 
-        assert_owner(program_id, verified_messages_info)?;
-        assert_owner(program_id, reward_manager_info)?;
-        assert_owner(program_id, bot_oracle_info)?;
+        is_owner!(
+            *program_id,
+            verified_messages_info,
+            reward_manager_info,
+            bot_oracle_info
+        );
 
         let verified_messages =
             VerifiedMessages::try_from_slice(&verified_messages_info.data.borrow())?;
         assert_initialized(&verified_messages)?;
 
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        assert_initialized(&reward_manager)?;
-
         let bot_oracle = SenderAccount::try_from_slice(&bot_oracle_info.data.borrow())?;
         assert_initialized(&bot_oracle)?;
+
+        // Bot oracle reward manager should be correct
+        assert_account_key(reward_manager_info, &bot_oracle.reward_manager)?;
+
+        let message = [
+            transfer_data.eth_recipient.as_ref(),
+            b"_",
+            transfer_data.amount.to_le_bytes().as_ref(),
+            b"_",
+            transfer_data.id.as_ref(),
+            b"_",
+            bot_oracle.eth_address.as_ref(),
+        ]
+        .concat();
+
+        // Check messages and bot oracles
+        assert_messages(&message, &verified_messages.messages)?;
 
         // Transfer reward tokens to user
         token_transfer(
