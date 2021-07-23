@@ -4,7 +4,7 @@ use crate::{
     error::{to_audius_program_error, AudiusProgramError},
     instruction::TransferArgs,
     processor::SENDER_SEED_PREFIX,
-    state::{SenderAccount, VerifiedMessage, VerifiedMessages},
+    state::{SenderAccount, VerifiedMessage},
 };
 use borsh::BorshDeserialize;
 use solana_program::{
@@ -15,6 +15,7 @@ use solana_program::{
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::{Pubkey, PubkeyError},
+    rent::Rent,
     secp256k1_program, system_instruction, sysvar,
 };
 use std::collections::{BTreeSet, HashSet};
@@ -356,6 +357,27 @@ pub fn build_verify_secp_add_sender(
     );
 }
 
+/// Create account
+#[allow(clippy::too_many_arguments)]
+pub fn create_account<'a>(
+    program_id: &Pubkey,
+    from: AccountInfo<'a>,
+    to: AccountInfo<'a>,
+    space: usize,
+    signers_seeds: &[&[&[u8]]],
+    rent: &Rent,
+) -> ProgramResult {
+    let ix = system_instruction::create_account(
+        from.key,
+        to.key,
+        rent.minimum_balance(space),
+        space as u64,
+        program_id,
+    );
+
+    invoke_signed(&ix, &[from, to], signers_seeds)
+}
+
 /// Checks that the user signed message with his ethereum private key
 pub fn check_ethereum_sign(
     instruction_info: &AccountInfo,
@@ -416,6 +438,25 @@ pub fn assert_unique_senders(messages: Vec<VerifiedMessage>) -> ProgramResult {
     // Check operator collision
     if !messages_iter.all(move |x| uniq_operators.insert(x.1)) {
         return Err(AudiusProgramError::OperatorCollision.into());
+    }
+
+    Ok(())
+}
+
+pub fn assert_owner(owner: &Pubkey, account: &AccountInfo) -> ProgramResult {
+    if owner != account.key {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    Ok(())
+}
+
+pub fn assert_initialized<A>(account: &A) -> ProgramResult
+where
+    A: IsInitialized,
+{
+    if !account.is_initialized() {
+        return Err(ProgramError::InvalidAccountData);
     }
 
     Ok(())

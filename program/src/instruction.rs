@@ -113,19 +113,17 @@ pub enum Instructions {
 
     ///   Transfer tokens to pointed receiver
     ///
-    ///   0. `[]` Reward manager
-    ///   1. `[]` Reward manager authority. Program account
-    ///   2. `[writable]` Recipient. Key generated from Eth address
-    ///   3. `[writable]` Vault with all the "reward" tokens. Program is authority
-    ///   4. `[]` Bot oracle
-    ///   5. `[signer]` Funder. Account which pay for new account creation
-    ///   6. `[writable]` Transfer account to create
-    ///   7. `[]` Sysvar instruction id
+    ///   0. `[]` Verified messages
+    ///   1. `[]` Reward manager
+    ///   2. `[]` Reward manager authority
+    ///   3. `[]` Reward token source
+    ///   4. `[]` Reward token recipient
+    ///   5. `[]` Transfer account
+    ///   6. `[]` Bot oracle
+    ///   7. `[]` Payer
     ///   8. `[]` Sysvar rent
-    ///   9. `[]` SPL Token id
-    ///   10. `[]` System program
-    ///   11. `[]` Senders
-    ///   ...
+    ///   9. `[]` Token program id
+    ///  10. `[]` System program id
     Transfer(TransferArgs),
 }
 
@@ -305,49 +303,44 @@ pub fn verify_transfer_signature<I>(
 
 /// Create `Transfer` instruction
 #[allow(clippy::too_many_arguments)]
-pub fn transfer<I>(
+pub fn transfer(
     program_id: &Pubkey,
+    verified_messages: &Pubkey,
     reward_manager: &Pubkey,
-    recipient: &Pubkey,
-    vault_token_account: &Pubkey,
+    reward_token_source: &Pubkey,
+    reward_token_recipient: &Pubkey,
     bot_oracle: &Pubkey,
-    funder: &Pubkey,
-    senders: I,
-    params: TransferArgs,
-) -> Result<Instruction, ProgramError>
-where
-    I: IntoIterator<Item = Pubkey>,
-{
+    payer: &Pubkey,
+    amount: u64,
+    id: String,
+    eth_recipient: [u8; 20],
+) -> Result<Instruction, ProgramError> {
     let data = Instructions::Transfer(TransferArgs {
-        amount: params.amount,
-        id: params.id.clone(),
-        eth_recipient: params.eth_recipient,
+        amount,
+        id: id.clone(),
+        eth_recipient,
     })
     .try_to_vec()?;
 
-    let transfer_acc_to_create = get_address_pair(
+    let transfer_account = get_address_pair(
         program_id,
         reward_manager,
-        [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), params.id.as_ref()].concat(),
+        [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), id.as_ref()].concat(),
     )?;
 
-    let mut accounts = vec![
+    let accounts = vec![
+        AccountMeta::new_readonly(*verified_messages, false),
         AccountMeta::new_readonly(*reward_manager, false),
-        AccountMeta::new_readonly(transfer_acc_to_create.base.address, false),
-        AccountMeta::new(*recipient, false),
-        AccountMeta::new(*vault_token_account, false),
+        AccountMeta::new_readonly(transfer_account.base.address, false),
+        AccountMeta::new(*reward_token_source, false),
+        AccountMeta::new(*reward_token_recipient, false),
+        AccountMeta::new(transfer_account.derive.address, false),
         AccountMeta::new_readonly(*bot_oracle, false),
-        AccountMeta::new(*funder, true),
-        AccountMeta::new(transfer_acc_to_create.derive.address, false),
-        AccountMeta::new_readonly(sysvar::instructions::id(), false),
+        AccountMeta::new_readonly(*payer, true),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
         AccountMeta::new_readonly(spl_token::id(), false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];
-    let iter = senders
-        .into_iter()
-        .map(|i| AccountMeta::new_readonly(i, false));
-    accounts.extend(iter);
 
     Ok(Instruction {
         program_id: *program_id,
