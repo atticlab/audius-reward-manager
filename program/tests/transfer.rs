@@ -180,7 +180,7 @@ async fn transfer_test() {
             &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
-            instruction::Transfer {
+            instruction::TransferArgs {
                 amount: tokens_amount,
                 id: String::from(transfer_id),
                 eth_recipient: recipient_eth_key,
@@ -345,7 +345,7 @@ async fn secp_missing() {
                 &second_sender.derive.address,
                 &context.payer.pubkey(),
                 vec![first_sender.derive.address],
-                instruction::Transfer {
+                instruction::TransferArgs {
                     amount: tokens_amount,
                     id: String::from(transfer_id),
                     eth_recipient: recipient_eth_key,
@@ -545,7 +545,7 @@ async fn different_oracles_mentiones() {
             &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
-            instruction::Transfer {
+            instruction::TransferArgs {
                 amount: tokens_amount,
                 id: String::from(transfer_id),
                 eth_recipient: recipient_eth_key,
@@ -702,7 +702,7 @@ async fn oracle_sign_missing() {
                 &second_sender.derive.address,
                 &context.payer.pubkey(),
                 vec![first_sender.derive.address],
-                instruction::Transfer {
+                instruction::TransferArgs {
                     amount: tokens_amount,
                     id: String::from(transfer_id),
                     eth_recipient: recipient_eth_key,
@@ -885,7 +885,7 @@ async fn repeating_operators() {
             &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
-            instruction::Transfer {
+            instruction::TransferArgs {
                 amount: tokens_amount,
                 id: String::from(transfer_id),
                 eth_recipient: recipient_eth_key,
@@ -1071,7 +1071,7 @@ async fn repeating_ids() {
             &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
-            instruction::Transfer {
+            instruction::TransferArgs {
                 amount: tokens_amount,
                 id: String::from(transfer_id),
                 eth_recipient: recipient_eth_key,
@@ -1272,7 +1272,7 @@ async fn fail_different_amounts_in_sender_messages() {
             &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
-            instruction::Transfer {
+            instruction::TransferArgs {
                 amount: tokens_amount,
                 id: String::from(transfer_id),
                 eth_recipient: recipient_eth_key,
@@ -1450,7 +1450,7 @@ async fn fail_different_amount_in_oracle_message() {
             &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
-            instruction::Transfer {
+            instruction::TransferArgs {
                 amount: tokens_amount,
                 id: String::from(transfer_id),
                 eth_recipient: recipient_eth_key,
@@ -1635,7 +1635,7 @@ async fn fail_different_bot_oracle_in_sender_messages() {
             &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
-            instruction::Transfer {
+            instruction::TransferArgs {
                 amount: tokens_amount,
                 id: String::from(transfer_id),
                 eth_recipient: recipient_eth_key,
@@ -1820,7 +1820,7 @@ async fn fail_bot_oracle_is_one_of_the_senders() {
             &oracle.derive.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
-            instruction::Transfer {
+            instruction::TransferArgs {
                 amount: tokens_amount,
                 id: String::from(transfer_id),
                 eth_recipient: recipient_eth_key,

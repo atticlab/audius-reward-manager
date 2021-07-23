@@ -2,9 +2,12 @@
 
 use crate::{
     error::AudiusProgramError,
-    instruction::{AddSender, CreateSender, InitRewardManager, Instructions, Transfer},
+    instruction::{
+        AddSenderArgs, CreateSenderArgs, InitRewardManagerArgs, Instructions, TransferArgs,
+        VerifyTransferSignatureArgs,
+    },
     is_owner,
-    state::{RewardManager, SenderAccount},
+    state::{RewardManager, SenderAccount, SignedPayload, VerifiedMessages},
     utils::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -267,15 +270,62 @@ impl Processor {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn process_verify_transfer_signature<'a>(
         program_id: &Pubkey,
-        verified_messages: &AccountInfo<'a>,
-        reward_manager: &AccountInfo<'a>,
-        sender: &AccountInfo<'a>,
-        funder: &AccountInfo<'a>,
+        verified_messages_info: &AccountInfo<'a>,
+        reward_manager_info: &AccountInfo<'a>,
+        sender_info: &AccountInfo<'a>,
+        funder_info: &AccountInfo<'a>,
         instruction_info: &AccountInfo<'a>,
-        rent_info: &AccountInfo<'a>,
+        signed_payload: SignedPayload,
     ) -> ProgramResult {
+        if !funder_info.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        is_owner!(
+            *program_id,
+            verified_messages_info,
+            reward_manager_info,
+            sender_info
+        )?;
+
+        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
+        if !reward_manager.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+
+        let sender_account = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
+        if !sender_account.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+        if sender_account.eth_address != signed_payload.address {
+            return Err(AudiusProgramError::IncorectSenderAccount.into());
+        }
+        assert_account_key(reward_manager_info, &sender_account.reward_manager)?;
+
+        let mut verified_messages =
+            VerifiedMessages::try_from_slice(&verified_messages_info.data.borrow())?;
+        if verified_messages.is_initialized() {
+            assert_account_key(reward_manager_info, &verified_messages.reward_manager)?;
+        } else {
+            verified_messages = VerifiedMessages::new(*reward_manager_info.key);
+        }
+
+        // Check signatures from prev instruction
+        check_ethereum_sign(
+            instruction_info,
+            &signed_payload.address,
+            &signed_payload.message,
+        )?;
+
+        verified_messages.add(signed_payload, sender_account.operator);
+        // Check unique senders & operators
+        assert_unique_senders(verified_messages.messages.clone())?;
+
+        verified_messages.serialize(&mut *verified_messages_info.data.borrow_mut())?;
+
         Ok(())
     }
 
@@ -291,7 +341,7 @@ impl Processor {
         transfer_acc_to_create: &AccountInfo<'a>,
         instruction_info: &AccountInfo<'a>,
         rent_info: &AccountInfo<'a>,
-        transfer_data: Transfer,
+        transfer_data: TransferArgs,
         senders: Vec<&AccountInfo<'a>>,
     ) -> ProgramResult {
         let reward_manager_data = RewardManager::try_from_slice(&reward_manager.data.borrow())?;
@@ -398,7 +448,7 @@ impl Processor {
         let instruction = Instructions::try_from_slice(input)?;
         let account_info_iter = &mut accounts.iter();
         match instruction {
-            Instructions::InitRewardManager(InitRewardManager { min_votes }) => {
+            Instructions::InitRewardManager(InitRewardManagerArgs { min_votes }) => {
                 msg!("Instruction: InitRewardManager");
 
                 let reward_manager = next_account_info(account_info_iter)?;
@@ -421,7 +471,7 @@ impl Processor {
                     min_votes,
                 )
             }
-            Instructions::CreateSender(CreateSender {
+            Instructions::CreateSender(CreateSenderArgs {
                 eth_address,
                 operator,
             }) => {
@@ -466,7 +516,7 @@ impl Processor {
                     sys_prog,
                 )
             }
-            Instructions::AddSender(AddSender {
+            Instructions::AddSender(AddSenderArgs {
                 eth_address,
                 operator,
             }) => {
@@ -494,7 +544,9 @@ impl Processor {
                     operator,
                 )
             }
-            Instructions::VerifyTransferSignature => {
+            Instructions::VerifyTransferSignature(VerifyTransferSignatureArgs {
+                signed_payload,
+            }) => {
                 msg!("Instruction: VerifyTransferSignature");
 
                 let verified_messages = next_account_info(account_info_iter)?;
@@ -502,7 +554,6 @@ impl Processor {
                 let sender = next_account_info(account_info_iter)?;
                 let funder = next_account_info(account_info_iter)?;
                 let instructions_info = next_account_info(account_info_iter)?;
-                let rent = next_account_info(account_info_iter)?;
                 let _system_program = next_account_info(account_info_iter)?;
 
                 Self::process_verify_transfer_signature(
@@ -512,10 +563,10 @@ impl Processor {
                     sender,
                     funder,
                     instructions_info,
-                    rent,
+                    signed_payload,
                 )
             }
-            Instructions::Transfer(Transfer {
+            Instructions::Transfer(TransferArgs {
                 amount,
                 id,
                 eth_recipient,
@@ -547,7 +598,7 @@ impl Processor {
                     transfer_acc_to_create,
                     instruction_info,
                     rent_info,
-                    Transfer {
+                    TransferArgs {
                         amount,
                         id,
                         eth_recipient,

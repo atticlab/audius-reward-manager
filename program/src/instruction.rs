@@ -2,6 +2,7 @@
 
 use crate::{
     processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX},
+    state::SignedPayload,
     utils::{get_address_pair, get_base_address, EthereumAddress},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -12,40 +13,47 @@ use solana_program::{
     system_program, sysvar,
 };
 
-/// `InitRewardManager` instruction parameters
+/// `InitRewardManager` instruction args
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
-pub struct InitRewardManager {
+pub struct InitRewardManagerArgs {
     /// Number of signer votes required for sending rewards
     pub min_votes: u8,
 }
 
-/// `CreateSender` instruction parameters
+/// `CreateSender` instruction args
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
-pub struct CreateSender {
+pub struct CreateSenderArgs {
     /// Ethereum address
     pub eth_address: EthereumAddress,
     /// Sender operator
     pub operator: EthereumAddress,
 }
 
-/// `AddSender` instruction parameters
+/// `AddSender` instruction args
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
-pub struct AddSender {
+pub struct AddSenderArgs {
     /// Ethereum address
     pub eth_address: EthereumAddress,
     /// Sender operator
     pub operator: EthereumAddress,
 }
 
-/// `Transfer` instruction parameters
+/// `Transfer` instruction args
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
-pub struct Transfer {
+pub struct TransferArgs {
     /// Amount to transfer
     pub amount: u64,
     /// ID generated on backend
     pub id: String,
     /// Recipient's Eth address
     pub eth_recipient: EthereumAddress,
+}
+
+/// `VerifyTransferSignature` instruction args
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+pub struct VerifyTransferSignatureArgs {
+    /// Signed payload
+    pub signed_payload: SignedPayload,
 }
 
 /// Instruction definition
@@ -60,7 +68,7 @@ pub enum Instructions {
     ///   4. `[]` Reward manager authority.
     ///   5. `[]` Token program
     ///   6. `[]` Rent sysvar
-    InitRewardManager(InitRewardManager),
+    InitRewardManager(InitRewardManagerArgs),
 
     ///   Admin method creating new authorized sender
     ///
@@ -71,7 +79,7 @@ pub enum Instructions {
     ///   4. `[]` Addidable sender
     ///   5. `[]` System program id
     ///   6. `[]` Rent sysvar
-    CreateSender(CreateSender),
+    CreateSender(CreateSenderArgs),
 
     ///   Admin method removing sender
     ///  
@@ -90,7 +98,7 @@ pub enum Instructions {
     /// 3. `[writable]` new_sender
     /// 4. `[]` Bunch of old senders which prove adding new one
     /// ...
-    AddSender(AddSender),
+    AddSender(AddSenderArgs),
 
     ///   Verify transfer signature
     ///
@@ -100,9 +108,8 @@ pub enum Instructions {
     ///   3. `[signer]` Funder. Account which pay for new account creation
     ///   4. `[writable]` Transfer account to create
     ///   5. `[]` Sysvar instruction id
-    ///   6. `[]` Sysvar rent
     ///   7. `[]` System program
-    VerifyTransferSignature,
+    VerifyTransferSignature(VerifyTransferSignatureArgs),
 
     ///   Transfer tokens to pointed receiver
     ///
@@ -119,7 +126,7 @@ pub enum Instructions {
     ///   10. `[]` System program
     ///   11. `[]` Senders
     ///   ...
-    Transfer(Transfer),
+    Transfer(TransferArgs),
 }
 
 /// Create `InitRewardManager` instruction
@@ -131,7 +138,7 @@ pub fn init(
     manager: &Pubkey,
     min_votes: u8,
 ) -> Result<Instruction, ProgramError> {
-    let init_data = Instructions::InitRewardManager(InitRewardManager { min_votes });
+    let init_data = Instructions::InitRewardManager(InitRewardManagerArgs { min_votes });
     let data = init_data.try_to_vec()?;
 
     let (base, _) = get_base_address(program_id, reward_manager);
@@ -161,7 +168,7 @@ pub fn create_sender(
     eth_address: EthereumAddress,
     operator: EthereumAddress,
 ) -> Result<Instruction, ProgramError> {
-    let create_data = Instructions::CreateSender(CreateSender {
+    let create_data = Instructions::CreateSender(CreateSenderArgs {
         eth_address,
         operator,
     });
@@ -234,7 +241,7 @@ pub fn add_sender<'a, I>(
 where
     I: IntoIterator<Item = &'a Pubkey>,
 {
-    let data = Instructions::AddSender(AddSender {
+    let data = Instructions::AddSender(AddSenderArgs {
         eth_address,
         operator,
     })
@@ -274,8 +281,11 @@ pub fn verify_transfer_signature<I>(
     reward_manager: &Pubkey,
     sender: &Pubkey,
     funder: &Pubkey,
+    signed_payload: SignedPayload,
 ) -> Result<Instruction, ProgramError> {
-    let data = Instructions::VerifyTransferSignature.try_to_vec()?;
+    let data =
+        Instructions::VerifyTransferSignature(VerifyTransferSignatureArgs { signed_payload })
+            .try_to_vec()?;
 
     let accounts = vec![
         AccountMeta::new(*verified_messages, false),
@@ -283,7 +293,6 @@ pub fn verify_transfer_signature<I>(
         AccountMeta::new_readonly(*sender, false),
         AccountMeta::new(*funder, true),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
-        AccountMeta::new_readonly(sysvar::rent::id(), false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];
 
@@ -295,6 +304,7 @@ pub fn verify_transfer_signature<I>(
 }
 
 /// Create `Transfer` instruction
+#[allow(clippy::too_many_arguments)]
 pub fn transfer<I>(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
@@ -303,12 +313,12 @@ pub fn transfer<I>(
     bot_oracle: &Pubkey,
     funder: &Pubkey,
     senders: I,
-    params: Transfer,
+    params: TransferArgs,
 ) -> Result<Instruction, ProgramError>
 where
     I: IntoIterator<Item = Pubkey>,
 {
-    let data = Instructions::Transfer(Transfer {
+    let data = Instructions::Transfer(TransferArgs {
         amount: params.amount,
         id: params.id.clone(),
         eth_recipient: params.eth_recipient,

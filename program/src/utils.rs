@@ -2,9 +2,9 @@
 
 use crate::{
     error::{to_audius_program_error, AudiusProgramError},
-    instruction::Transfer,
+    instruction::TransferArgs,
     processor::SENDER_SEED_PREFIX,
-    state::SenderAccount,
+    state::{SenderAccount, VerifiedMessage, VerifiedMessages},
 };
 use borsh::BorshDeserialize;
 use solana_program::{
@@ -17,7 +17,7 @@ use solana_program::{
     pubkey::{Pubkey, PubkeyError},
     secp256k1_program, system_instruction, sysvar,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::{collections::BTreeMap, convert::TryInto};
 
 /// Represent compressed ethereum pubkey
@@ -279,7 +279,7 @@ fn check_signer(
 
 pub fn build_verify_secp_transfer(
     bot_oracle: SenderAccount,
-    transfer_data: Transfer,
+    transfer_data: TransferArgs,
 ) -> impl VerifierFn {
     return Box::new(
         move |instructions: Vec<Instruction>,
@@ -354,4 +354,69 @@ pub fn build_verify_secp_add_sender(
             Ok(())
         },
     );
+}
+
+/// Checks that the user signed message with his ethereum private key
+pub fn check_ethereum_sign(
+    instruction_info: &AccountInfo,
+    expected_signer: &EthereumAddress,
+    expected_message: &[u8],
+) -> ProgramResult {
+    let index = sysvar::instructions::load_current_index(&instruction_info.data.borrow());
+
+    // Instruction can't be first in transaction
+    // because must follow after `new_secp256k1_instruction`
+    if index == 0 {
+        return Err(AudiusProgramError::Secp256InstructionMissing.into());
+    }
+
+    // Load previous instruction
+    let instruction = sysvar::instructions::load_instruction_at(
+        (index - 1) as usize,
+        &instruction_info.data.borrow(),
+    )
+    .map_err(to_audius_program_error)?;
+
+    // Check that instruction is `new_secp256k1_instruction`
+    if instruction.program_id != secp256k1_program::id() {
+        return Err(AudiusProgramError::Secp256InstructionMissing.into());
+    }
+
+    let eth_signer = get_signer_from_secp_instruction(instruction.data.clone());
+
+    if eth_signer != *expected_signer {
+        return Err(AudiusProgramError::WrongSigner.into());
+    }
+
+    validate_eth_signature(expected_message, instruction.data)?;
+
+    Ok(())
+}
+
+/// Assert account key
+pub fn assert_account_key(account_info: &AccountInfo, key: &Pubkey) -> ProgramResult {
+    if *account_info.key != *key {
+        Err(ProgramError::InvalidArgument)
+    } else {
+        Ok(())
+    }
+}
+
+/// Assert unique senders & operators
+pub fn assert_unique_senders(messages: Vec<VerifiedMessage>) -> ProgramResult {
+    let mut uniq_senders = HashSet::new();
+    let mut uniq_operators = HashSet::new();
+    let mut messages_iter = messages.into_iter();
+
+    // Check sender collision
+    if !messages_iter.all(move |x| uniq_senders.insert(x.0.address)) {
+        return Err(AudiusProgramError::RepeatedSenders.into());
+    }
+
+    // Check operator collision
+    if !messages_iter.all(move |x| uniq_operators.insert(x.1)) {
+        return Err(AudiusProgramError::OperatorCollision.into());
+    }
+
+    Ok(())
 }
