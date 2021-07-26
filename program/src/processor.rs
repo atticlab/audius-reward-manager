@@ -303,6 +303,9 @@ impl Processor {
         }
         assert_account_key(reward_manager_info, &sender_account.reward_manager)?;
 
+        msg!("TS1");
+        msg!("LEN {}", std::mem::size_of::<VerifiedMessages>());
+
         let mut verified_messages =
             VerifiedMessages::try_from_slice(&verified_messages_info.data.borrow())?;
         if verified_messages.is_initialized() {
@@ -310,6 +313,8 @@ impl Processor {
         } else {
             verified_messages = VerifiedMessages::new(*reward_manager_info.key);
         }
+
+        msg!("TS2");
 
         // Check signatures from prev instruction
         check_ethereum_sign(

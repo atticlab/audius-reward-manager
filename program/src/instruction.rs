@@ -273,7 +273,7 @@ where
 }
 
 /// Create `VerifyTransferSignature` instruction
-pub fn verify_transfer_signature<I>(
+pub fn verify_transfer_signature(
     program_id: &Pubkey,
     verified_messages: &Pubkey,
     reward_manager: &Pubkey,

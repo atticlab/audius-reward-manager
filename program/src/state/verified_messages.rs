@@ -27,6 +27,9 @@ pub struct VerifiedMessages {
 }
 
 impl VerifiedMessages {
+    /// 1 + 32 + 31
+    pub const LEN: usize = 64;
+
     /// Creates new `VerifiedMessages`
     pub fn new(reward_manager: Pubkey) -> Self {
         Self {
