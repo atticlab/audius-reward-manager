@@ -122,7 +122,7 @@ pub fn token_transfer<'a>(
         source.key,
         destination.key,
         authority.key,
-        &[&authority.key],
+        &[],
         amount,
     )?;
     invoke_signed(
@@ -444,10 +444,21 @@ pub fn assert_unique_senders(messages: Vec<VerifiedMessage>) -> ProgramResult {
 }
 
 /// Assert messages
-pub fn assert_messages(valid_message: &[u8], messages: &Vec<VerifiedMessage>) -> ProgramResult {
-    for (message, _) in messages {
-        if valid_message != message.message {
-            return Err(AudiusProgramError::IncorrectMessages.into());
+pub fn assert_messages(
+    valid_message: &[u8],
+    valid_bot_oracle_message: &[u8],
+    bot_oracle_address: &EthereumAddress,
+    messages: &Vec<VerifiedMessage>,
+) -> ProgramResult {
+    for (message, ethereum_address) in messages {
+        if ethereum_address == bot_oracle_address {
+            if valid_bot_oracle_message != message.message {
+                return Err(AudiusProgramError::IncorrectMessages.into());
+            }
+        } else {
+            if valid_message != message.message {
+                return Err(AudiusProgramError::IncorrectMessages.into());
+            }
         }
     }
 

@@ -354,13 +354,22 @@ impl Processor {
             VerifiedMessages::try_from_slice(&verified_messages_info.data.borrow())?;
         assert_initialized(&verified_messages)?;
 
+        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
+        assert_initialized(&reward_manager)?;
+
         let bot_oracle = SenderAccount::try_from_slice(&bot_oracle_info.data.borrow())?;
         assert_initialized(&bot_oracle)?;
 
         // Bot oracle reward manager should be correct
         assert_account_key(reward_manager_info, &bot_oracle.reward_manager)?;
 
-        let message = [
+        // Check signs for minimum required votes
+        if verified_messages.messages.len() != reward_manager.min_votes as usize {
+            return Err(AudiusProgramError::NotEnoughSigners.into());
+        }
+
+        // Valid senders message
+        let valid_message = [
             transfer_data.eth_recipient.as_ref(),
             b"_",
             transfer_data.amount.to_le_bytes().as_ref(),
@@ -371,8 +380,23 @@ impl Processor {
         ]
         .concat();
 
+        // Valid bot oracle message
+        let valid_bot_oracle_message = [
+            transfer_data.eth_recipient.as_ref(),
+            b"_",
+            transfer_data.amount.to_le_bytes().as_ref(),
+            b"_",
+            transfer_data.id.as_ref(),
+        ]
+        .concat();
+
         // Check messages and bot oracles
-        assert_messages(&message, &verified_messages.messages)?;
+        assert_messages(
+            &valid_message,
+            &valid_bot_oracle_message,
+            &bot_oracle.eth_address,
+            &verified_messages.messages,
+        )?;
 
         // Transfer reward tokens to user
         token_transfer(
@@ -399,6 +423,15 @@ impl Processor {
             &[signers_seeds],
             rent,
         )?;
+
+        // Delete verified messages account
+        let verified_messages_lamports = verified_messages_info.lamports();
+        let payer_lamports = payer_info.lamports();
+
+        **verified_messages_info.lamports.borrow_mut() = 0u64;
+        **payer_info.lamports.borrow_mut() = payer_lamports
+            .checked_add(verified_messages_lamports)
+            .ok_or(AudiusProgramError::MathOverflow)?;
 
         Ok(())
     }

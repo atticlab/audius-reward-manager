@@ -68,6 +68,10 @@ pub enum AudiusProgramError {
     /// Incorrect messages
     #[error("Incorrect messages")]
     IncorrectMessages,
+
+    /// Math overflow
+    #[error("Math overflow")]
+    MathOverflow,
 }
 impl From<AudiusProgramError> for ProgramError {
     fn from(e: AudiusProgramError) -> Self {
