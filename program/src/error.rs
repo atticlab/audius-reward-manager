@@ -64,6 +64,10 @@ pub enum AudiusProgramError {
     /// Funds already sent
     #[error("Funds already sent")]
     AlreadySent,
+
+    /// Incorrect messages
+    #[error("Incorrect messages")]
+    IncorrectMessages,
 }
 impl From<AudiusProgramError> for ProgramError {
     fn from(e: AudiusProgramError) -> Self {

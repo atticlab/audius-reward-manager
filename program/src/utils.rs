@@ -443,9 +443,12 @@ pub fn assert_unique_senders(messages: Vec<VerifiedMessage>) -> ProgramResult {
     Ok(())
 }
 
-pub fn assert_owner(owner: &Pubkey, account: &AccountInfo) -> ProgramResult {
-    if owner != account.key {
-        return Err(ProgramError::IncorrectProgramId);
+/// Assert messages
+pub fn assert_messages(valid_message: &[u8], messages: &Vec<VerifiedMessage>) -> ProgramResult {
+    for (message, _) in messages {
+        if valid_message != message.message {
+            return Err(AudiusProgramError::IncorrectMessages.into());
+        }
     }
 
     Ok(())
