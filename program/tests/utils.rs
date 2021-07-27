@@ -44,6 +44,12 @@ pub fn new_secp256k1_instruction_2_0(
     let secp_pubkey = secp256k1::PublicKey::from_secret_key(priv_key);
     let eth_pubkey = construct_eth_pubkey(&secp_pubkey);
     let mut hasher = sha3::Keccak256::new();
+    let mut message_buf: [u8; 128] = [0; 128];
+    for (i, b) in message_arr.iter().enumerate() {
+        message_buf[i] = *b;
+    }
+    let message_arr = message_buf;
+
     hasher.update(&message_arr);
     let message_hash = hasher.finalize();
     let mut message_hash_arr = [0u8; 32];
@@ -76,7 +82,7 @@ pub fn new_secp256k1_instruction_2_0(
     let message_data_offset = signature_offset
         .saturating_add(signature_arr.len())
         .saturating_add(1);
-    instruction_data[message_data_offset..].copy_from_slice(message_arr);
+    instruction_data[message_data_offset..].copy_from_slice(&message_arr);
 
     let num_signatures = 1;
     instruction_data[0] = num_signatures;
