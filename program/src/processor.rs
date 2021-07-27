@@ -8,7 +8,7 @@ use crate::{
     state::{RewardManager, SenderAccount, VerifiedMessage, VerifiedMessages},
     utils::*,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 use solana_program::{
     account_info::next_account_info,
     account_info::AccountInfo,
@@ -55,16 +55,18 @@ impl Processor {
         rent: &AccountInfo<'a>,
         min_votes: u8,
     ) -> ProgramResult {
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        if reward_manager.is_initialized() {
-            return Err(ProgramError::AccountAlreadyInitialized);
-        }
+        assert_owned_by(reward_manager_info, program_id)?;
+
+        let mut reward_manager =
+            RewardManager::unpack_unchecked(&reward_manager_info.data.borrow())?;
+        assert_uninitialized(&reward_manager)?;
 
         let (base, _) = get_base_address(program_id, reward_manager_info.key);
         if base != *authority_info.key {
             return Err(ProgramError::InvalidAccountData);
         }
 
+        // TODO: to make it a separate function
         invoke(
             &spl_token::instruction::initialize_account(
                 &spl_token::id(),
@@ -81,8 +83,8 @@ impl Processor {
             ],
         )?;
 
-        RewardManager::new(*token_account_info.key, *manager_info.key, min_votes)
-            .serialize(&mut *reward_manager_info.data.borrow_mut())?;
+        reward_manager = RewardManager::new(*token_account_info.key, *manager_info.key, min_votes);
+        RewardManager::pack(reward_manager, *reward_manager_info.data.borrow_mut())?;
 
         Ok(())
     }
@@ -104,11 +106,9 @@ impl Processor {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        if !reward_manager.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
+        assert_owned_by(reward_manager_info, program_id)?;
 
+        let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
         if reward_manager.manager != *manager_account_info.key {
             return Err(AudiusProgramError::IncorectManagerAccount.into());
         }
@@ -141,29 +141,32 @@ impl Processor {
             &rent,
         )?;
 
-        SenderAccount::new(*reward_manager_info.key, eth_address, operator)
-            .serialize(&mut *sender_info.data.borrow_mut())?;
+        let sender_account = SenderAccount::new(*reward_manager_info.key, eth_address, operator);
+        SenderAccount::pack(sender_account, *sender_info.data.borrow_mut())?;
 
         Ok(())
     }
 
     fn process_delete_sender<'a>(
-        _program_id: &Pubkey,
+        program_id: &Pubkey,
         reward_manager_info: &AccountInfo<'a>,
         manager_account_info: &AccountInfo<'a>,
         sender_info: &AccountInfo<'a>,
         refunder_account_info: &AccountInfo<'a>,
         _sys_prog: &AccountInfo<'a>,
     ) -> ProgramResult {
+        assert_owned_by(reward_manager_info, program_id)?;
+        assert_owned_by(sender_info, program_id)?;
+
         if !manager_account_info.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
-        let sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
-        if sender.reward_manager != *reward_manager_info.key {
+        let sender_account = SenderAccount::unpack(&sender_info.data.borrow())?;
+        if sender_account.reward_manager != *reward_manager_info.key {
             return Err(AudiusProgramError::WrongRewardManagerKey.into());
         }
 
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
+        let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
         if reward_manager.manager != *manager_account_info.key {
             return Err(AudiusProgramError::IncorectManagerAccount.into());
         }
@@ -186,11 +189,9 @@ impl Processor {
         eth_address: EthereumAddress,
         operator: EthereumAddress,
     ) -> ProgramResult {
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        if !reward_manager.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
+        assert_owned_by(reward_manager_info, program_id)?;
 
+        let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
         if signers_info.len() < reward_manager.min_votes.into() {
             return Err(AudiusProgramError::NotEnoughSigners.into());
         }
@@ -229,8 +230,8 @@ impl Processor {
             &rent,
         )?;
 
-        SenderAccount::new(*reward_manager_info.key, eth_address, operator)
-            .serialize(&mut *new_sender_info.data.borrow_mut())?;
+        let sender_account = SenderAccount::new(*reward_manager_info.key, eth_address, operator);
+        SenderAccount::pack(sender_account, *new_sender_info.data.borrow_mut())?;
 
         Ok(())
     }
@@ -252,15 +253,7 @@ impl Processor {
         assert_owned_by(reward_manager_info, program_id)?;
         assert_owned_by(sender_info, program_id)?;
 
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        if !reward_manager.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
-
-        let sender_account = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
-        if !sender_account.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
+        let sender_account = SenderAccount::unpack(&sender_info.data.borrow())?;
         assert_account_key(reward_manager_info, &sender_account.reward_manager)?;
 
         let mut verified_messages =
@@ -310,8 +303,7 @@ impl Processor {
         //assert_owned_by(bot_oracle_info, program_id)?;
 
         let verified_messages =
-            VerifiedMessages::unpack_unchecked(&verified_messages_info.data.borrow())?;
-        assert_initialized(&verified_messages)?;
+            VerifiedMessages::unpack(&verified_messages_info.data.borrow())?;
 
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
         assert_initialized(&reward_manager)?;
@@ -322,10 +314,14 @@ impl Processor {
         // Bot oracle reward manager should be correct
         assert_account_key(reward_manager_info, &bot_oracle.reward_manager)?;
 
+        let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
         // Check signs for minimum required votes
         if verified_messages.messages.len() != reward_manager.min_votes as usize {
             return Err(AudiusProgramError::NotEnoughSigners.into());
         }
+
+        let bot_oracle = SenderAccount::unpack(&bot_oracle_info.data.borrow())?;
+        assert_account_key(reward_manager_info, &bot_oracle.reward_manager)?;
 
         // Valid senders message
         let valid_message = [
@@ -406,6 +402,7 @@ impl Processor {
     ) -> ProgramResult {
         let instruction = Instructions::try_from_slice(input)?;
         let account_info_iter = &mut accounts.iter();
+
         match instruction {
             Instructions::InitRewardManager(InitRewardManagerArgs { min_votes }) => {
                 msg!("Instruction: InitRewardManager");

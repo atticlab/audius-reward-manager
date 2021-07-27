@@ -26,6 +26,15 @@ pub fn assert_owned_by(account: &AccountInfo, owner: &Pubkey) -> ProgramResult {
     }
 }
 
+/// Assert unitialized
+pub fn assert_uninitialized<T: IsInitialized>(account: &T) -> ProgramResult {
+    if account.is_initialized() {
+        Err(ProgramError::AccountAlreadyInitialized)
+    } else {
+        Ok(())
+    }
+}
+
 /// Assert account key
 pub fn assert_account_key(account_info: &AccountInfo, key: &Pubkey) -> ProgramResult {
     if *account_info.key != *key {
