@@ -318,14 +318,14 @@ pub fn transfer(
     )?;
 
     let accounts = vec![
-        AccountMeta::new_readonly(*verified_messages, false),
+        AccountMeta::new(*verified_messages, false),
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(transfer_account.base.address, false),
         AccountMeta::new(*reward_token_source, false),
         AccountMeta::new(*reward_token_recipient, false),
         AccountMeta::new(transfer_account.derive.address, false),
         AccountMeta::new_readonly(*bot_oracle, false),
-        AccountMeta::new_readonly(*payer, true),
+        AccountMeta::new(*payer, true),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
         AccountMeta::new_readonly(spl_token::id(), false),
         AccountMeta::new_readonly(system_program::id(), false),

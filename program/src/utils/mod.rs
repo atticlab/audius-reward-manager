@@ -8,6 +8,7 @@ use solana_program::{
     pubkey::{Pubkey, PubkeyError},
     rent::Rent,
     system_instruction,
+    msg,
 };
 use std::collections::BTreeSet;
 
@@ -65,10 +66,10 @@ pub fn assert_messages(
     } in messages
     {
         if address == bot_oracle_address {
-            if valid_bot_oracle_message != message {
+            if valid_bot_oracle_message != &message[..valid_bot_oracle_message.len()] {
                 return Err(AudiusProgramError::IncorrectMessages.into());
             }
-        } else if valid_message != message {
+        } else if valid_message != &message[..valid_message.len()] {
             return Err(AudiusProgramError::IncorrectMessages.into());
         }
     }

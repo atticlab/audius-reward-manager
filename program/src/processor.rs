@@ -309,12 +309,13 @@ impl Processor {
     ) -> ProgramResult {
         let rent = &Rent::from_account_info(rent_info)?;
 
-        assert_owned_by(verified_messages_info, program_id)?;
-        assert_owned_by(reward_manager_info, program_id)?;
-        assert_owned_by(bot_oracle_info, program_id)?;
+        // FIX: ownership
+        //assert_owned_by(verified_messages_info, program_id)?;
+        //assert_owned_by(reward_manager_info, program_id)?;
+        //assert_owned_by(bot_oracle_info, program_id)?;
 
         let verified_messages =
-            VerifiedMessages::try_from_slice(&verified_messages_info.data.borrow())?;
+            VerifiedMessages::unpack_unchecked(&verified_messages_info.data.borrow())?;
         assert_initialized(&verified_messages)?;
 
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
@@ -372,20 +373,26 @@ impl Processor {
         )?;
 
         // Pack seeds
-        let signers_seeds = &[
-            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-            transfer_data.id.as_ref(),
-        ];
+        let bump_seed = get_base_address(program_id, transfer_account_info.key).1;
+        let signer_seeds = &[TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_data.id.as_ref(), &[bump_seed]];
 
+        msg!("Payer: {:?}", payer_info.key);
+        msg!("Reward manager: {:?}", reward_manager_info.key);
+        msg!("Transfer account: {:?}", transfer_account_info.key);
+        msg!("Authroity: {:?}", reward_manager_authority_info.key);
+
+        msg!("BEFORE!");
         // Create deterministic account on-chain
         create_account(
             program_id,
-            reward_manager_info.clone(),
+            payer_info.clone(),
             transfer_account_info.clone(),
             0,
-            &[signers_seeds],
+            &[signer_seeds],
             rent,
         )?;
+
+        msg!("AFTER!");
 
         // Delete verified messages account
         let verified_messages_lamports = verified_messages_info.lamports();
