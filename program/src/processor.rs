@@ -14,7 +14,6 @@ use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
-    program::invoke,
     program_error::ProgramError,
     program_pack::{IsInitialized, Pack},
     pubkey::Pubkey,
@@ -51,7 +50,7 @@ impl Processor {
         mint_info: &AccountInfo<'a>,
         manager_info: &AccountInfo<'a>,
         authority_info: &AccountInfo<'a>,
-        spl_token_info: &AccountInfo<'a>,
+        _spl_token_info: &AccountInfo<'a>,
         rent: &AccountInfo<'a>,
         min_votes: u8,
     ) -> ProgramResult {
@@ -66,21 +65,11 @@ impl Processor {
             return Err(ProgramError::InvalidAccountData);
         }
 
-        // TODO: to make it a separate function
-        invoke(
-            &spl_token::instruction::initialize_account(
-                &spl_token::id(),
-                token_account_info.key,
-                mint_info.key,
-                &base,
-            )?,
-            &[
-                spl_token_info.clone(),
-                token_account_info.clone(),
-                mint_info.clone(),
-                authority_info.clone(),
-                rent.clone(),
-            ],
+        spl_initialize_account(
+            token_account_info.clone(),
+            mint_info.clone(),
+            authority_info.clone(),
+            rent.clone(),
         )?;
 
         reward_manager = RewardManager::new(*token_account_info.key, *manager_info.key, min_votes);
@@ -344,7 +333,7 @@ impl Processor {
         )?;
 
         // Transfer reward tokens to user
-        token_transfer(
+        spl_token_transfer(
             program_id,
             &reward_manager_info.key,
             reward_token_source_info,
