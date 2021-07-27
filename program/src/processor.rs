@@ -98,9 +98,7 @@ impl Processor {
         assert_owned_by(reward_manager_info, program_id)?;
 
         let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
-        if reward_manager.manager != *manager_account_info.key {
-            return Err(AudiusProgramError::IncorectManagerAccount.into());
-        }
+        assert_account_key(manager_account_info, &reward_manager.manager)?;
 
         let pair = get_address_pair(
             program_id,
@@ -144,21 +142,18 @@ impl Processor {
         refunder_account_info: &AccountInfo<'a>,
         _sys_prog: &AccountInfo<'a>,
     ) -> ProgramResult {
-        assert_owned_by(reward_manager_info, program_id)?;
-        assert_owned_by(sender_info, program_id)?;
-
         if !manager_account_info.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
-        let sender_account = SenderAccount::unpack(&sender_info.data.borrow())?;
-        if sender_account.reward_manager != *reward_manager_info.key {
-            return Err(AudiusProgramError::WrongRewardManagerKey.into());
-        }
+
+        assert_owned_by(reward_manager_info, program_id)?;
+        assert_owned_by(sender_info, program_id)?;
 
         let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
-        if reward_manager.manager != *manager_account_info.key {
-            return Err(AudiusProgramError::IncorectManagerAccount.into());
-        }
+        assert_account_key(manager_account_info, &reward_manager.manager)?;
+
+        let sender_account = SenderAccount::unpack(&sender_info.data.borrow())?;
+        assert_account_key(reward_manager_info, &sender_account.reward_manager)?;
 
         Self::transfer_all(sender_info, refunder_account_info)?;
 
