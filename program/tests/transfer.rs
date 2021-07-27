@@ -169,8 +169,7 @@ async fn success() {
     context.banks_client.process_transaction(tx).await.unwrap();
 
     // Add 3 messages
-    let iter = keys.iter().enumerate().map(|i| (i.0, i.1));
-    for item in iter {
+    for item in keys.iter().enumerate() {
         let oracle_sign =
             new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 0);
         instructions.push(oracle_sign);
