@@ -303,22 +303,18 @@ impl Processor {
         //assert_owned_by(bot_oracle_info, program_id)?;
 
         let verified_messages = VerifiedMessages::unpack(&verified_messages_info.data.borrow())?;
-
         let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
-
+        msg!("Before");
         let bot_oracle = SenderAccount::unpack(&bot_oracle_info.data.borrow())?;
+        msg!("After");
 
         // Bot oracle reward manager should be correct
         assert_account_key(reward_manager_info, &bot_oracle.reward_manager)?;
 
-        let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
         // Check signs for minimum required votes
         if verified_messages.messages.len() != reward_manager.min_votes as usize {
             return Err(AudiusProgramError::NotEnoughSigners.into());
         }
-
-        let bot_oracle = SenderAccount::unpack(&bot_oracle_info.data.borrow())?;
-        assert_account_key(reward_manager_info, &bot_oracle.reward_manager)?;
 
         // Valid senders message
         let valid_message = [

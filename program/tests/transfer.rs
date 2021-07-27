@@ -60,7 +60,7 @@ async fn success() {
         &token_account,
         &mint.pubkey(),
         &manager_account.pubkey(),
-        3,
+        1,
     )
     .await;
 
@@ -210,7 +210,7 @@ async fn success() {
             &reward_manager.pubkey(),
             &token_account.pubkey(),
             &recipient_sol_key.derive.address,
-            &oracle.base.address,
+            &oracle.derived.address,
             &context.payer.pubkey(),
             10_000u64,
             transfer_id.to_string(),
