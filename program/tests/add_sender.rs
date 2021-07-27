@@ -1,12 +1,10 @@
 #![cfg(feature = "test-bpf")]
 mod utils;
-use std::mem::MaybeUninit;
-
 use audius_reward_manager::{
     instruction,
     processor::SENDER_SEED_PREFIX,
     state::SenderAccount,
-    utils::{get_address_pair, EthereumAddress},
+    utils::{find_derived_pair, EthereumAddress},
 };
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
@@ -17,6 +15,7 @@ use solana_sdk::{
     secp256k1_instruction::construct_eth_pubkey, signature::Keypair, signer::Signer,
     transaction::Transaction,
 };
+use std::mem::MaybeUninit;
 use utils::*;
 
 #[tokio::test]
@@ -34,27 +33,30 @@ async fn success() {
     let operator: EthereumAddress = rng.gen();
     let keys: [[u8; 32]; 3] = rng.gen();
     let mut signers: [Pubkey; 3] = unsafe { MaybeUninit::zeroed().assume_init() };
+
     for item in keys.iter().enumerate() {
         let sender_priv_key = SecretKey::parse(item.1).unwrap();
         let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
         let eth_address = construct_eth_pubkey(&secp_pubkey);
 
-        let pair = get_address_pair(
+        let (_, derived_address, _) = find_derived_pair(
             &audius_reward_manager::id(),
             &reward_manager.pubkey(),
-            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-        )
-        .unwrap();
+            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()]
+                .concat()
+                .as_ref(),
+        );
 
-        signers[item.0] = pair.derived.address;
+        signers[item.0] = derived_address;
     }
 
-    let pair = get_address_pair(
+    let (_, derived_address, _) = find_derived_pair(
         &audius_reward_manager::id(),
         &reward_manager.pubkey(),
-        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-    )
-    .unwrap();
+        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()]
+            .concat()
+            .as_ref(),
+    );
 
     let mut context = program_test.start_with_context().await;
     let rent = context.banks_client.get_rent().await.unwrap();
@@ -128,7 +130,7 @@ async fn success() {
         SenderAccount::new(reward_manager.pubkey(), eth_address, operator),
         context
             .banks_client
-            .get_account_data_with_borsh(pair.derived.address)
+            .get_account_data_with_borsh(derived_address)
             .await
             .unwrap()
     );

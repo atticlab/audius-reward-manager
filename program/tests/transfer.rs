@@ -6,7 +6,7 @@ use audius_reward_manager::{
     instruction,
     processor::{SENDER_SEED_PREFIX, TRANSFER_ACC_SPACE, TRANSFER_SEED_PREFIX},
     state::{VerifiedMessages, VoteMessage},
-    utils::{get_address_pair, EthereumAddress},
+    utils::{find_derived_pair, EthereumAddress},
 };
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
@@ -63,12 +63,14 @@ async fn success() {
     let secp_oracle_pubkey = PublicKey::from_secret_key(&oracle_priv_key);
     let eth_oracle_address = construct_eth_pubkey(&secp_oracle_pubkey);
     let oracle_operator: EthereumAddress = rng.gen();
-    let oracle = get_address_pair(
+
+    let (_, oracle_derived_address, _) = find_derived_pair(
         &audius_reward_manager::id(),
         &reward_manager.pubkey(),
-        [SENDER_SEED_PREFIX.as_ref(), eth_oracle_address.as_ref()].concat(),
-    )
-    .unwrap();
+        [SENDER_SEED_PREFIX.as_ref(), eth_oracle_address.as_ref()]
+            .concat()
+            .as_ref(),
+    );
 
     create_sender(
         &mut context,
@@ -125,14 +127,15 @@ async fn success() {
         let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
         let eth_address = construct_eth_pubkey(&secp_pubkey);
 
-        let pair = get_address_pair(
+        let (_, derived_address, _) = find_derived_pair(
             &audius_reward_manager::id(),
             &reward_manager.pubkey(),
-            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-        )
-        .unwrap();
+            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()]
+                .concat()
+                .as_ref(),
+        );
 
-        signers[item.0] = pair.derived.address;
+        signers[item.0] = derived_address;
     }
 
     for item in keys.iter().enumerate() {
@@ -168,16 +171,20 @@ async fn success() {
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    // Add 3 messages
+    let mut bot_oracle_message_buf: [u8; 128] = [0u8; 128];
+    for (i, b) in bot_oracle_message.iter().enumerate() {
+        bot_oracle_message_buf[i] = *b;
+    }
 
-
+    // Add 3 messages and bot oracle
     let oracle_sign =
-            new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 0);
-        instructions.push(oracle_sign);
+        new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message_buf.as_ref(), 0);
+    instructions.push(oracle_sign);
 
     for item in keys.iter().enumerate() {
         let priv_key = SecretKey::parse(item.1).unwrap();
-        let inst = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), 1);
+        let inst =
+            new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), (item.0 + 1) as u8);
         instructions.push(inst);
         instructions.push(
             instruction::verify_transfer_signature(
@@ -190,20 +197,6 @@ async fn success() {
         );
     }
 
-    let oracle_sign =
-            new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 0);
-        instructions.push(oracle_sign);
-        
-    instructions.push(
-        instruction::verify_transfer_signature(
-            &audius_reward_manager::id(),
-            &verified_messages.pubkey(),
-            &reward_manager.pubkey(),
-            &oracle.derived.address,
-        )
-        .unwrap(),
-    );
-
     let tx = Transaction::new_signed_with_payer(
         &instructions,
         Some(&context.payer.pubkey()),
@@ -213,17 +206,16 @@ async fn success() {
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    /* Transfer */
-    let transfer_acc_created = get_address_pair(
+    let (_, transfer_derived_address, _) = find_derived_pair(
         &audius_reward_manager::id(),
         &reward_manager.pubkey(),
         [
             TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
             transfer_id.as_ref(),
         ]
-        .concat(),
-    )
-    .unwrap();
+        .concat()
+        .as_ref(),
+    );
 
     let recipient_sol_key = claimable_tokens::utils::program::get_address_pair(
         &claimable_tokens::id(),
@@ -240,7 +232,7 @@ async fn success() {
             &reward_manager.pubkey(),
             &token_account.pubkey(),
             &recipient_sol_key.derive.address,
-            &oracle.derived.address,
+            &oracle_derived_address,
             &context.payer.pubkey(),
             10_000u64,
             transfer_id.to_string(),
@@ -254,13 +246,13 @@ async fn success() {
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    let transfer_acc_data = get_account(&mut context, &transfer_acc_created.derived.address)
+    let transfer_account_data = get_account(&mut context, &transfer_derived_address)
         .await
         .unwrap();
 
     assert_eq!(
-        transfer_acc_data.lamports,
+        transfer_account_data.lamports,
         rent.minimum_balance(TRANSFER_ACC_SPACE)
     );
-    assert_eq!(transfer_acc_data.data.len(), TRANSFER_ACC_SPACE);
+    assert_eq!(transfer_account_data.data.len(), TRANSFER_ACC_SPACE);
 }

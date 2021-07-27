@@ -60,8 +60,9 @@ impl Processor {
             RewardManager::unpack_unchecked(&reward_manager_info.data.borrow())?;
         assert_uninitialized(&reward_manager)?;
 
-        let (base, _) = get_base_address(program_id, reward_manager_info.key);
-        if base != *authority_info.key {
+        let (reward_manager_authority, _) =
+            find_program_address(program_id, reward_manager_info.key);
+        if reward_manager_authority != *authority_info.key {
             return Err(ProgramError::InvalidAccountData);
         }
 
@@ -100,19 +101,17 @@ impl Processor {
         let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
         assert_account_key(manager_account_info, &reward_manager.manager)?;
 
-        let pair = get_address_pair(
-            program_id,
-            reward_manager_info.key,
-            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-        )?;
+        let derived_seed = [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat();
+        let (reward_manager_authority, derived_address, bump_seed) =
+            find_derived_pair(program_id, reward_manager_info.key, derived_seed.as_ref());
 
-        assert_account_key(authority_info, &pair.base.address)?;
-        assert_account_key(sender_info, &pair.derived.address)?;
+        assert_account_key(authority_info, &reward_manager_authority)?;
+        assert_account_key(sender_info, &derived_address)?;
 
         let signers_seeds = &[
-            &pair.base.address.to_bytes()[..32],
-            &pair.derived.seed.as_slice(),
-            &[pair.derived.bump_seed],
+            &reward_manager_authority.to_bytes()[..32],
+            &derived_seed.as_slice(),
+            &[bump_seed],
         ];
 
         let rent = Rent::from_account_info(rent_info)?;
@@ -186,19 +185,17 @@ impl Processor {
             eth_address,
         )?;
 
-        let pair = get_address_pair(
-            program_id,
-            reward_manager_info.key,
-            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-        )?;
+        let derived_seed = [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat();
+        let (reward_manager_authority, derived_address, bump_seed) =
+            find_derived_pair(program_id, reward_manager_info.key, derived_seed.as_ref());
 
-        assert_account_key(authority_info, &pair.base.address)?;
-        assert_account_key(new_sender_info, &pair.derived.address)?;
+        assert_account_key(authority_info, &reward_manager_authority)?;
+        assert_account_key(new_sender_info, &derived_address)?;
 
         let signers_seeds = &[
-            &pair.base.address.to_bytes()[..32],
-            &pair.derived.seed.as_slice(),
-            &[pair.derived.bump_seed],
+            &reward_manager_authority.to_bytes()[..32],
+            &derived_seed.as_slice(),
+            &[bump_seed],
         ];
 
         let rent = Rent::from_account_info(rent_info)?;
@@ -282,7 +279,6 @@ impl Processor {
         let verified_messages = VerifiedMessages::unpack(&verified_messages_info.data.borrow())?;
         // Check signs for minimum required votes
         if verified_messages.messages.len() != (reward_manager.min_votes + 1) as usize {
-            msg!("verified_messages.messages.len(): {}", verified_messages.messages.len());
             return Err(AudiusProgramError::NotEnoughSigners.into());
         }
 
@@ -329,20 +325,18 @@ impl Processor {
             transfer_data.amount,
         )?;
 
-        let pair = get_address_pair(
-            program_id,
-            reward_manager_info.key,
-            [
-                TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-                transfer_data.id.as_ref(),
-            ]
-            .concat(),
-        )?;
+        let derived_seed = [
+            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+            transfer_data.id.as_ref(),
+        ]
+        .concat();
+        let (reward_manager_authority, _, bump_seed) =
+            find_derived_pair(program_id, reward_manager_info.key, derived_seed.as_ref());
 
         let signers_seeds = &[
-            &pair.base.address.to_bytes()[..32],
-            &pair.derived.seed.as_slice(),
-            &[pair.derived.bump_seed],
+            &reward_manager_authority.to_bytes()[..32],
+            &derived_seed.as_slice(),
+            &[bump_seed],
         ];
 
         // Create deterministic account on-chain

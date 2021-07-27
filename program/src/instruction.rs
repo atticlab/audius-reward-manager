@@ -2,7 +2,7 @@
 
 use crate::{
     processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX},
-    utils::{get_address_pair, get_base_address, EthereumAddress},
+    utils::{find_derived_pair, find_program_address, EthereumAddress},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -129,14 +129,14 @@ pub fn init(
     let init_data = Instructions::InitRewardManager(InitRewardManagerArgs { min_votes });
     let data = init_data.try_to_vec()?;
 
-    let (base, _) = get_base_address(program_id, reward_manager);
+    let (reward_manager_authority, _) = find_program_address(program_id, reward_manager);
 
     let accounts = vec![
         AccountMeta::new(*reward_manager, false),
         AccountMeta::new(*token_account, false),
         AccountMeta::new_readonly(*mint, false),
         AccountMeta::new_readonly(*manager, false),
-        AccountMeta::new_readonly(base, false),
+        AccountMeta::new_readonly(reward_manager_authority, false),
         AccountMeta::new_readonly(spl_token::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
     ];
@@ -162,18 +162,20 @@ pub fn create_sender(
     });
     let data = create_data.try_to_vec()?;
 
-    let pair = get_address_pair(
+    let (reward_manager_authority, derived_address, _) = find_derived_pair(
         program_id,
         reward_manager,
-        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-    )?;
+        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()]
+            .concat()
+            .as_ref(),
+    );
 
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
-        AccountMeta::new_readonly(pair.base.address, false),
+        AccountMeta::new_readonly(reward_manager_authority, false),
         AccountMeta::new(*funder_account, true),
-        AccountMeta::new(pair.derived.address, false),
+        AccountMeta::new(derived_address, false),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
     ];
@@ -196,16 +198,18 @@ pub fn delete_sender(
     let delete_data = Instructions::DeleteSender;
     let data = delete_data.try_to_vec()?;
 
-    let pair = get_address_pair(
+    let (_, derived_address, _) = find_derived_pair(
         program_id,
         reward_manager,
-        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-    )?;
+        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()]
+            .concat()
+            .as_ref(),
+    );
 
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
-        AccountMeta::new(pair.derived.address, false),
+        AccountMeta::new(derived_address, false),
         AccountMeta::new(*refunder_account, false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];
@@ -235,17 +239,19 @@ where
     })
     .try_to_vec()?;
 
-    let pair = get_address_pair(
+    let (reward_manager_authority, derived_address, _) = find_derived_pair(
         program_id,
         reward_manager,
-        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-    )?;
+        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()]
+            .concat()
+            .as_ref(),
+    );
 
     let mut accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
-        AccountMeta::new_readonly(pair.base.address, false),
+        AccountMeta::new_readonly(reward_manager_authority, false),
         AccountMeta::new(*funder, true),
-        AccountMeta::new(pair.derived.address, false),
+        AccountMeta::new(derived_address, false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
         AccountMeta::new_readonly(system_program::id(), false),
@@ -306,14 +312,13 @@ pub fn transfer(
     })
     .try_to_vec()?;
 
-    let transfer_account = get_address_pair(
+    let (reward_manager_authority, derived_address, _) = find_derived_pair(
         program_id,
         reward_manager,
-        [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), id.as_ref()].concat(),
-    )?;
-
-    let reward_manager_authority = transfer_account.base.address;
-    let transfer_account = transfer_account.derived.address;
+        [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), id.as_ref()]
+            .concat()
+            .as_ref(),
+    );
 
     let accounts = vec![
         AccountMeta::new(*verified_messages, false),
@@ -321,7 +326,7 @@ pub fn transfer(
         AccountMeta::new_readonly(reward_manager_authority, false),
         AccountMeta::new(*reward_token_source, false),
         AccountMeta::new(*reward_token_recipient, false),
-        AccountMeta::new(transfer_account, false),
+        AccountMeta::new(derived_address, false),
         AccountMeta::new_readonly(*bot_oracle, false),
         AccountMeta::new(*payer, true),
         AccountMeta::new_readonly(sysvar::rent::id(), false),

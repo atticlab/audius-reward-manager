@@ -5,7 +5,7 @@ use solana_program::{
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_pack::IsInitialized,
-    pubkey::{Pubkey, PubkeyError},
+    pubkey::Pubkey,
     rent::Rent,
     system_instruction,
 };
@@ -119,59 +119,26 @@ pub fn assert_initialized<T: IsInitialized>(account: &T) -> ProgramResult {
 /// Represent compressed ethereum pubkey
 pub type EthereumAddress = [u8; 20];
 
-/// Base PDA related with some mint
-pub struct Base {
-    pub address: Pubkey,
-    pub bump_seed: u8,
+/// Generates seed bump for authorities
+pub fn find_program_address(program_id: &Pubkey, pubkey: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[&pubkey.to_bytes()[..32]], program_id)
 }
 
-/// Derived account related with some Base and Ethereum address
-pub struct Derived {
-    pub address: Pubkey,
-    pub seed: Vec<u8>,
-    pub bump_seed: u8,
+/// Generates derived address
+pub fn find_derived_address(program_id: &Pubkey, base: &Pubkey, seed: &[u8]) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[&base.to_bytes()[..32], seed], program_id)
 }
 
-/// Base with related
-pub struct AddressPair {
-    pub base: Base,
-    pub derived: Derived,
-}
-
-/// Return `Base` account with seed and corresponding derive
-/// with seed
-pub fn get_address_pair(
+pub fn find_derived_pair(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
-    seed: Vec<u8>,
-) -> Result<AddressPair, PubkeyError> {
-    let (base_pk, base_bump_seed) = get_base_address(program_id, reward_manager);
-    let (derived_pk, derived_bump_seed) =
-        get_derived_address(program_id, &base_pk.clone(), &seed.as_slice());
+    seed: &[u8],
+) -> (Pubkey, Pubkey, u8) {
+    let (reward_manager_authority, _) = find_program_address(program_id, reward_manager);
+    let (derived_address, bump_seed) =
+        find_derived_address(program_id, &reward_manager_authority, seed);
 
-    Ok(AddressPair {
-        base: Base {
-            address: base_pk,
-            bump_seed: base_bump_seed,
-        },
-        derived: Derived {
-            address: derived_pk,
-            seed,
-            bump_seed: derived_bump_seed,
-        },
-    })
-}
-
-/// Return PDA(that named `Base`) corresponding to specific `reward manager`
-/// and it bump seed
-pub fn get_base_address(program_id: &Pubkey, reward_manager: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[&reward_manager.to_bytes()[..32]], program_id)
-}
-
-/// Return derived token account address corresponding to specific
-/// ethereum account and it seed
-pub fn get_derived_address(program_id: &Pubkey, base: &Pubkey, seed: &[u8]) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[&base.to_bytes()[..32], seed], program_id)
+    (reward_manager_authority, derived_address, bump_seed)
 }
 
 /// Initialize SPL accont instruction.
@@ -201,7 +168,7 @@ pub fn spl_token_transfer<'a>(
     authority: &AccountInfo<'a>,
     amount: u64,
 ) -> ProgramResult {
-    let bump_seed = get_base_address(program_id, reward_manager).1;
+    let bump_seed = find_program_address(program_id, reward_manager).1;
 
     let authority_signature_seeds = [&reward_manager.to_bytes()[..32], &[bump_seed]];
     let signers = &[&authority_signature_seeds[..]];
