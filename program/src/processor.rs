@@ -105,9 +105,6 @@ impl Processor {
             reward_manager_info.key,
             [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
         )?;
-        if *sender_info.key != pair.derived.address {
-            return Err(AudiusProgramError::IncorectSenderAccount.into());
-        }
 
         assert_account_key(authority_info, &pair.base.address)?;
         assert_account_key(sender_info, &pair.derived.address)?;
