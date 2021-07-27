@@ -1,4 +1,8 @@
 #![allow(missing_docs)]
+use crate::{
+    error::AudiusProgramError,
+    state::{VerifiedMessage, TOTAL_VERIFIED_MESSAGES},
+};
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -13,8 +17,6 @@ use std::collections::BTreeSet;
 
 mod signs;
 pub use signs::*;
-
-use crate::{error::AudiusProgramError, state::VerifiedMessage};
 
 /// Assert owned by
 pub fn assert_owned_by(account: &AccountInfo, owner: &Pubkey) -> ProgramResult {
@@ -48,6 +50,10 @@ pub fn assert_unique_senders(messages: &[VerifiedMessage]) -> ProgramResult {
     let mut uniq_senders = BTreeSet::new();
     let mut uniq_operators = BTreeSet::new();
     let mut messages_iter = messages.iter();
+
+    if messages.len() > TOTAL_VERIFIED_MESSAGES {
+        return Err(AudiusProgramError::MessagesOverflow.into());
+    }
 
     // Check sender collision
     if !messages_iter.all(move |x| uniq_senders.insert(x.address)) {

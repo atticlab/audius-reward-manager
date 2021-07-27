@@ -34,6 +34,8 @@ pub struct VerifiedMessages {
     pub messages: Vec<VerifiedMessage>,
 }
 
+/// Total verified messages
+pub const TOTAL_VERIFIED_MESSAGES: usize = 5;
 // 20 + 128 + 20
 const VERIFIED_MESSAGE_LEN: usize = 168;
 // 1 + 32 + 1 + (168 * 5)
@@ -62,8 +64,13 @@ impl Pack for VerifiedMessages {
     fn pack_into_slice(&self, dst: &mut [u8]) {
         let output = array_mut_ref![dst, 0, VERIFIED_MESSAGES_LEN];
         #[allow(clippy::ptr_offset_with_cast)]
-        let (version, reward_manager, messages_len, data_flat) =
-            mut_array_refs![output, 1, PUBKEY_BYTES, 1, VERIFIED_MESSAGE_LEN * 5];
+        let (version, reward_manager, messages_len, data_flat) = mut_array_refs![
+            output,
+            1,
+            PUBKEY_BYTES,
+            1,
+            VERIFIED_MESSAGE_LEN * TOTAL_VERIFIED_MESSAGES
+        ];
 
         *version = self.version.to_le_bytes();
         reward_manager.copy_from_slice(self.reward_manager.as_ref());
@@ -85,8 +92,13 @@ impl Pack for VerifiedMessages {
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
         let input = array_ref![src, 0, VERIFIED_MESSAGES_LEN];
         #[allow(clippy::ptr_offset_with_cast)]
-        let (version, reward_manager, messages_len, data_flat) =
-            array_refs![input, 1, PUBKEY_BYTES, 1, VERIFIED_MESSAGE_LEN * 5];
+        let (version, reward_manager, messages_len, data_flat) = array_refs![
+            input,
+            1,
+            PUBKEY_BYTES,
+            1,
+            VERIFIED_MESSAGE_LEN * TOTAL_VERIFIED_MESSAGES
+        ];
 
         let version = u8::from_le_bytes(*version);
         let messages_len = u8::from_le_bytes(*messages_len);

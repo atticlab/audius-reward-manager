@@ -73,6 +73,10 @@ pub enum AudiusProgramError {
     #[error("Incorrect messages")]
     IncorrectMessages,
 
+    /// Messages overflow
+    #[error("Messages overflow")]
+    MessagesOverflow,
+
     /// Math overflow
     #[error("Math overflow")]
     MathOverflow,
