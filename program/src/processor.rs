@@ -302,19 +302,16 @@ impl Processor {
         //assert_owned_by(reward_manager_info, program_id)?;
         //assert_owned_by(bot_oracle_info, program_id)?;
 
-        let verified_messages = VerifiedMessages::unpack(&verified_messages_info.data.borrow())?;
         let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
-        msg!("Before");
-        let bot_oracle = SenderAccount::unpack(&bot_oracle_info.data.borrow())?;
-        msg!("After");
 
-        // Bot oracle reward manager should be correct
-        assert_account_key(reward_manager_info, &bot_oracle.reward_manager)?;
-
+        let verified_messages = VerifiedMessages::unpack(&verified_messages_info.data.borrow())?;
         // Check signs for minimum required votes
         if verified_messages.messages.len() != reward_manager.min_votes as usize {
             return Err(AudiusProgramError::NotEnoughSigners.into());
         }
+
+        let bot_oracle = SenderAccount::unpack(&bot_oracle_info.data.borrow())?;
+        assert_account_key(reward_manager_info, &bot_oracle.reward_manager)?;
 
         // Valid senders message
         let valid_message = [
@@ -356,12 +353,20 @@ impl Processor {
             transfer_data.amount,
         )?;
 
-        // Pack seeds
-        let bump_seed = get_base_address(program_id, transfer_account_info.key).1;
-        let signer_seeds = &[
-            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-            transfer_data.id.as_ref(),
-            &[bump_seed],
+        let pair = get_address_pair(
+            program_id,
+            reward_manager_info.key,
+            [
+                TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+                transfer_data.id.as_ref(),
+            ]
+            .concat(),
+        )?;
+
+        let signers_seeds = &[
+            &pair.base.address.to_bytes()[..32],
+            &pair.derived.seed.as_slice(),
+            &[pair.derived.bump_seed],
         ];
 
         msg!("Payer: {:?}", payer_info.key);
@@ -375,7 +380,7 @@ impl Processor {
             payer_info.clone(),
             transfer_account_info.clone(),
             0,
-            &[signer_seeds],
+            &[signers_seeds],
             rent,
         )?;
 
