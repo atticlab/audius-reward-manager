@@ -2,7 +2,6 @@
 
 use crate::{
     processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX},
-    state::SignedPayload,
     utils::{get_address_pair, get_base_address, EthereumAddress},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -47,13 +46,6 @@ pub struct TransferArgs {
     pub id: String,
     /// Recipient's Eth address
     pub eth_recipient: EthereumAddress,
-}
-
-/// `VerifyTransferSignature` instruction args
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
-pub struct VerifyTransferSignatureArgs {
-    /// Signed payload
-    pub signed_payload: SignedPayload,
 }
 
 /// Instruction definition
@@ -109,7 +101,7 @@ pub enum Instructions {
     ///   4. `[writable]` Transfer account to create
     ///   5. `[]` Sysvar instruction id
     ///   7. `[]` System program
-    VerifyTransferSignature(VerifyTransferSignatureArgs),
+    VerifyTransferSignature,
 
     ///   Transfer tokens to pointed receiver
     ///
@@ -279,11 +271,8 @@ pub fn verify_transfer_signature(
     reward_manager: &Pubkey,
     sender: &Pubkey,
     funder: &Pubkey,
-    signed_payload: SignedPayload,
 ) -> Result<Instruction, ProgramError> {
-    let data =
-        Instructions::VerifyTransferSignature(VerifyTransferSignatureArgs { signed_payload })
-            .try_to_vec()?;
+    let data = Instructions::VerifyTransferSignature.try_to_vec()?;
 
     let accounts = vec![
         AccountMeta::new(*verified_messages, false),

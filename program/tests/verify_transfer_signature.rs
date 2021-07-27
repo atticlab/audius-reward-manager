@@ -3,10 +3,9 @@ mod assert;
 mod utils;
 
 use audius_reward_manager::{
-    error::AudiusProgramError,
     instruction,
-    processor::{SENDER_SEED_PREFIX, TRANSFER_ACC_SPACE, TRANSFER_SEED_PREFIX},
-    state::{SignedPayload, VerifiedMessages},
+    processor::SENDER_SEED_PREFIX,
+    state::{VerifiedMessages, VoteMessage},
     utils::{get_address_pair, EthereumAddress},
 };
 use rand::{thread_rng, Rng};
@@ -16,20 +15,14 @@ use solana_program::{
 };
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::InstructionError,
-    secp256k1_instruction::*,
-    signature::Keypair,
-    signer::Signer,
-    transaction::{Transaction, TransactionError},
-    transport::TransportError,
+    secp256k1_instruction::*, signature::Keypair, signer::Signer, transaction::Transaction,
 };
-use std::convert::TryInto;
 use std::mem::MaybeUninit;
 use utils::*;
 
 #[tokio::test]
 async fn success() {
-    let mut program_test = program_test();
+    let program_test = program_test();
     let mut rng = thread_rng();
 
     let mut context = program_test.start_with_context().await;
@@ -83,32 +76,8 @@ async fn success() {
         eth_oracle_address.as_ref(),
     ]
     .concat();
-    let mut senders_message: [u8; 128] = [0; 128];
+    let mut senders_message: VoteMessage = [0; 128];
     senders_message[..senders_message_vec.len()].copy_from_slice(&senders_message_vec);
-
-    let bot_oracle_message = [
-        recipient_eth_key.as_ref(),
-        b"_",
-        tokens_amount.to_le_bytes().as_ref(),
-        b"_",
-        transfer_id.as_ref(),
-    ]
-    .concat();
-
-    let oracle = get_address_pair(
-        &audius_reward_manager::id(),
-        &reward_manager.pubkey(),
-        [SENDER_SEED_PREFIX.as_ref(), eth_oracle_address.as_ref()].concat(),
-    )
-    .unwrap();
-    create_sender(
-        &mut context,
-        &reward_manager.pubkey(),
-        &manager_account,
-        eth_oracle_address,
-        oracle_operator,
-    )
-    .await;
 
     // Generate data and create senders
     let keys: [[u8; 32]; 3] = rng.gen();
@@ -129,7 +98,6 @@ async fn success() {
         signers[item.0] = pair.derive.address;
     }
 
-    let mut signed_payloads: Vec<SignedPayload> = vec![];
     for item in keys.iter().enumerate() {
         let sender_priv_key = SecretKey::parse(item.1).unwrap();
         let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
@@ -142,11 +110,6 @@ async fn success() {
             operators[item.0],
         )
         .await;
-
-        signed_payloads.push(SignedPayload {
-            address: eth_address,
-            message: senders_message,
-        })
     }
 
     mint_tokens_to(
@@ -161,10 +124,6 @@ async fn success() {
 
     let mut instructions = Vec::<Instruction>::new();
 
-    let priv_key = SecretKey::parse(&keys[0]).unwrap();
-    let sender_sign = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), 0);
-    instructions.push(sender_sign);
-
     let verified_messages = Keypair::new();
 
     instructions.push(system_instruction::create_account(
@@ -175,7 +134,9 @@ async fn success() {
         &audius_reward_manager::id(),
     ));
 
-    println!("LEN {}", std::mem::size_of::<VerifiedMessages>());
+    let priv_key = SecretKey::parse(&keys[0]).unwrap();
+    let sender_sign = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), 1);
+    instructions.push(sender_sign);
 
     instructions.push(
         instruction::verify_transfer_signature(
@@ -184,7 +145,6 @@ async fn success() {
             &reward_manager.pubkey(),
             &signers[0],
             &context.payer.pubkey(),
-            signed_payloads[0].clone(),
         )
         .unwrap(),
     );

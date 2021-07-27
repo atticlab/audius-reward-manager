@@ -1,4 +1,5 @@
 #![cfg(feature = "test-bpf")]
+#![allow(dead_code)]
 use audius_reward_manager::instruction;
 use audius_reward_manager::utils::EthereumAddress;
 use audius_reward_manager::{id, processor::Processor};

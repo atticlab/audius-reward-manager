@@ -4,10 +4,8 @@ use crate::{
     error::AudiusProgramError,
     instruction::{
         AddSenderArgs, CreateSenderArgs, InitRewardManagerArgs, Instructions, TransferArgs,
-        VerifyTransferSignatureArgs,
     },
-    is_owner,
-    state::{RewardManager, SenderAccount, SignedPayload, VerifiedMessages},
+    state::{RewardManager, SenderAccount, VerifiedMessage, VerifiedMessages},
     utils::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -18,10 +16,10 @@ use solana_program::{
     msg,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
-    program_pack::IsInitialized,
+    program_pack::{IsInitialized, Pack},
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction, sysvar,
+    system_instruction,
     sysvar::Sysvar,
 };
 
@@ -178,35 +176,6 @@ impl Processor {
         Ok(())
     }
 
-    /// Checks that the user signed message with his ethereum private key
-    fn check_secp_signs(
-        program_id: &Pubkey,
-        reward_manager_info: &AccountInfo,
-        instruction_info: &AccountInfo,
-        expected_signers: Vec<&AccountInfo>,
-        extraction_depth: usize,
-        verifier: impl VerifierFn,
-    ) -> ProgramResult {
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        if expected_signers.len() < reward_manager.min_votes as _ {
-            return Err(AudiusProgramError::NotEnoughSigners.into());
-        }
-
-        let index = sysvar::instructions::load_current_index(&instruction_info.data.borrow());
-        // instruction can't be first in transaction
-        // because must follow after `new_secp256k1_instruction`
-        if index == 0 {
-            return Err(AudiusProgramError::Secp256InstructionMissing.into());
-        }
-
-        let secp_instructions = get_secp_instructions(index, extraction_depth, instruction_info)?;
-
-        let (senders_eth_addresses, operators_set) =
-            get_eth_addresses(program_id, reward_manager_info.key, expected_signers)?;
-
-        verifier(secp_instructions, senders_eth_addresses, operators_set)
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn process_add_sender<'a>(
         program_id: &Pubkey,
@@ -225,14 +194,17 @@ impl Processor {
             return Err(ProgramError::UninitializedAccount);
         }
 
-        let verifier = build_verify_secp_add_sender(reward_manager_info.key.clone(), eth_address);
-        Self::check_secp_signs(
+        if signers_info.len() < reward_manager.min_votes.into() {
+            return Err(AudiusProgramError::NotEnoughSigners.into());
+        }
+
+        check_secp_add_sender(
             program_id,
-            &reward_manager_info,
+            &reward_manager_info.key,
             instructions_info,
             signers_info.clone(),
             signers_info.len(),
-            verifier,
+            eth_address,
         )?;
 
         let pair = get_address_pair(
@@ -276,18 +248,14 @@ impl Processor {
         sender_info: &AccountInfo<'a>,
         funder_info: &AccountInfo<'a>,
         instruction_info: &AccountInfo<'a>,
-        signed_payload: SignedPayload,
     ) -> ProgramResult {
         if !funder_info.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        is_owner!(
-            *program_id,
-            verified_messages_info,
-            reward_manager_info,
-            sender_info
-        )?;
+        assert_owned_by(verified_messages_info, program_id)?;
+        assert_owned_by(reward_manager_info, program_id)?;
+        assert_owned_by(sender_info, program_id)?;
 
         let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
         if !reward_manager.is_initialized() {
@@ -298,36 +266,29 @@ impl Processor {
         if !sender_account.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
         }
-        if sender_account.eth_address != signed_payload.address {
-            return Err(AudiusProgramError::IncorectSenderAccount.into());
-        }
         assert_account_key(reward_manager_info, &sender_account.reward_manager)?;
 
-        msg!("TS1");
-        msg!("LEN {}", std::mem::size_of::<VerifiedMessages>());
-
         let mut verified_messages =
-            VerifiedMessages::try_from_slice(&verified_messages_info.data.borrow())?;
+            VerifiedMessages::unpack_unchecked(&verified_messages_info.data.borrow())?;
         if verified_messages.is_initialized() {
             assert_account_key(reward_manager_info, &verified_messages.reward_manager)?;
         } else {
             verified_messages = VerifiedMessages::new(*reward_manager_info.key);
         }
 
-        msg!("TS2");
-
         // Check signatures from prev instruction
-        check_ethereum_sign(
-            instruction_info,
-            &signed_payload.address,
-            &signed_payload.message,
-        )?;
+        let message = check_secp_verify_transfer(instruction_info, &sender_account.eth_address)?;
 
-        verified_messages.add(signed_payload, sender_account.operator);
+        verified_messages.add(VerifiedMessage {
+            address: sender_account.eth_address,
+            message,
+            operator: sender_account.operator,
+        });
+
         // Check unique senders & operators
-        assert_unique_senders(verified_messages.messages.clone())?;
+        assert_unique_senders(&verified_messages.messages)?;
 
-        verified_messages.serialize(&mut *verified_messages_info.data.borrow_mut())?;
+        VerifiedMessages::pack(verified_messages, *verified_messages_info.data.borrow_mut())?;
 
         Ok(())
     }
@@ -348,12 +309,9 @@ impl Processor {
     ) -> ProgramResult {
         let rent = &Rent::from_account_info(rent_info)?;
 
-        is_owner!(
-            *program_id,
-            verified_messages_info,
-            reward_manager_info,
-            bot_oracle_info
-        );
+        assert_owned_by(verified_messages_info, program_id)?;
+        assert_owned_by(reward_manager_info, program_id)?;
+        assert_owned_by(bot_oracle_info, program_id)?;
 
         let verified_messages =
             VerifiedMessages::try_from_slice(&verified_messages_info.data.borrow())?;
@@ -513,9 +471,7 @@ impl Processor {
                     operator,
                 )
             }
-            Instructions::VerifyTransferSignature(VerifyTransferSignatureArgs {
-                signed_payload,
-            }) => {
+            Instructions::VerifyTransferSignature => {
                 msg!("Instruction: VerifyTransferSignature");
 
                 let verified_messages = next_account_info(account_info_iter)?;
@@ -532,7 +488,6 @@ impl Processor {
                     sender,
                     funder,
                     instructions_info,
-                    signed_payload,
                 )
             }
             Instructions::Transfer(TransferArgs {
