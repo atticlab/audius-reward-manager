@@ -44,12 +44,7 @@ pub fn new_secp256k1_instruction_2_0(
     let secp_pubkey = secp256k1::PublicKey::from_secret_key(priv_key);
     let eth_pubkey = construct_eth_pubkey(&secp_pubkey);
     let mut hasher = sha3::Keccak256::new();
-    let mut message_buf: [u8; 128] = [0; 128];
-    for (i, b) in message_arr.iter().enumerate() {
-        message_buf[i] = *b;
-    }
-    let message_arr = message_buf;
-
+    
     hasher.update(&message_arr);
     let message_hash = hasher.finalize();
     let mut message_hash_arr = [0u8; 32];

@@ -107,12 +107,14 @@ pub fn check_message_from_secp_instruction(
     }
 }
 
-pub fn get_message_from_secp_instruction(secp_instruction_data: Vec<u8>) -> VoteMessage {
-    secp_instruction_data[MESSAGE_DATA_OFFSET..]
-        .to_vec()
-        .as_slice()
-        .try_into()
-        .unwrap()
+pub fn get_message_from_secp_instruction(secp_instruction_data: Vec<u8>) -> Result<VoteMessage, ProgramError> {
+    let mut message = secp_instruction_data[MESSAGE_DATA_OFFSET..]
+        .to_vec();
+
+    while message.len() < 128 {
+        message.push(0);
+    }
+    message.as_slice().try_into().map_err(|_| AudiusProgramError::SignatureVerificationFailed.into())
 }
 
 fn vec_into_checkmap(vec: &[EthereumAddress]) -> BTreeMap<EthereumAddress, bool> {
@@ -202,7 +204,5 @@ pub fn check_secp_verify_transfer(
         return Err(AudiusProgramError::WrongSigner.into());
     }
 
-    let message = get_message_from_secp_instruction(secp_instruction.data);
-
-    Ok(message)
+    get_message_from_secp_instruction(secp_instruction.data)
 }
