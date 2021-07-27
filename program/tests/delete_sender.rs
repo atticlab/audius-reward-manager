@@ -4,7 +4,7 @@ use audius_reward_manager::{
     instruction,
     processor::SENDER_SEED_PREFIX,
     state::{RewardManager, SenderAccount},
-    utils::{get_address_pair, EthereumAddress},
+    utils::{find_derived_pair, EthereumAddress},
 };
 use borsh::BorshSerialize;
 use rand::{thread_rng, Rng};
@@ -25,12 +25,13 @@ async fn success() {
     let eth_address: EthereumAddress = rng.gen();
     let operator: EthereumAddress = rng.gen();
 
-    let pair = get_address_pair(
+    let (_, derived_address, _) = find_derived_pair(
         &audius_reward_manager::id(),
         &reward_manager,
-        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-    )
-    .unwrap();
+        [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()]
+            .concat()
+            .as_ref(),
+    );
 
     let reward_manager_data = RewardManager::new(token_account, manager_account.pubkey(), 3);
     program_test.add_account(
@@ -46,7 +47,7 @@ async fn success() {
 
     let sender_data = SenderAccount::new(reward_manager, eth_address, operator);
     program_test.add_account(
-        pair.derived.address,
+        derived_address,
         Account {
             lamports: 9000,
             data: sender_data.try_to_vec().unwrap(),
@@ -75,7 +76,7 @@ async fn success() {
 
     let account = context
         .banks_client
-        .get_account(pair.derived.address)
+        .get_account(derived_address)
         .await
         .unwrap();
     assert!(account.is_none());

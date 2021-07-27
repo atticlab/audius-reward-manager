@@ -58,16 +58,18 @@ pub fn get_eth_addresses<'a>(
 
         assert_owned_by(signer, program_id)?;
 
-        let generated_sender_key = get_address_pair(
+        let (_, derived_address, _) = find_derived_pair(
             program_id,
             reward_manager_key,
             [
                 SENDER_SEED_PREFIX.as_ref(),
                 signer_data.eth_address.as_ref(),
             ]
-            .concat(),
-        )?;
-        if generated_sender_key.derived.address != *signer.key {
+            .concat()
+            .as_ref(),
+        );
+
+        if derived_address != *signer.key {
             return Err(ProgramError::InvalidSeeds);
         }
         if senders_eth_addresses.contains(&signer_data.eth_address) {

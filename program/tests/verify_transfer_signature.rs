@@ -6,7 +6,7 @@ use audius_reward_manager::{
     instruction,
     processor::SENDER_SEED_PREFIX,
     state::{VerifiedMessages, VoteMessage},
-    utils::{get_address_pair, EthereumAddress},
+    utils::{find_derived_pair, EthereumAddress},
 };
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
@@ -87,14 +87,15 @@ async fn success() {
         let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
         let eth_address = construct_eth_pubkey(&secp_pubkey);
 
-        let pair = get_address_pair(
+        let (_, derived_address, _) = find_derived_pair(
             &audius_reward_manager::id(),
             &reward_manager.pubkey(),
-            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-        )
-        .unwrap();
+            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()]
+                .concat()
+                .as_ref(),
+        );
 
-        signers[item.0] = pair.derived.address;
+        signers[item.0] = derived_address;
     }
 
     for item in keys.iter().enumerate() {
