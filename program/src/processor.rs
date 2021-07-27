@@ -14,7 +14,6 @@ use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
-    program::invoke,
     program_error::ProgramError,
     program_pack::{IsInitialized, Pack},
     pubkey::Pubkey,
@@ -51,7 +50,7 @@ impl Processor {
         mint_info: &AccountInfo<'a>,
         manager_info: &AccountInfo<'a>,
         authority_info: &AccountInfo<'a>,
-        spl_token_info: &AccountInfo<'a>,
+        _spl_token_info: &AccountInfo<'a>,
         rent: &AccountInfo<'a>,
         min_votes: u8,
     ) -> ProgramResult {
@@ -66,21 +65,11 @@ impl Processor {
             return Err(ProgramError::InvalidAccountData);
         }
 
-        // TODO: to make it a separate function
-        invoke(
-            &spl_token::instruction::initialize_account(
-                &spl_token::id(),
-                token_account_info.key,
-                mint_info.key,
-                &base,
-            )?,
-            &[
-                spl_token_info.clone(),
-                token_account_info.clone(),
-                mint_info.clone(),
-                authority_info.clone(),
-                rent.clone(),
-            ],
+        spl_initialize_account(
+            token_account_info.clone(),
+            mint_info.clone(),
+            authority_info.clone(),
+            rent.clone(),
         )?;
 
         reward_manager = RewardManager::new(*token_account_info.key, *manager_info.key, min_votes);
@@ -109,18 +98,13 @@ impl Processor {
         assert_owned_by(reward_manager_info, program_id)?;
 
         let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
-        if reward_manager.manager != *manager_account_info.key {
-            return Err(AudiusProgramError::IncorectManagerAccount.into());
-        }
+        assert_account_key(manager_account_info, &reward_manager.manager)?;
 
         let pair = get_address_pair(
             program_id,
             reward_manager_info.key,
             [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
         )?;
-        if *sender_info.key != pair.derived.address {
-            return Err(AudiusProgramError::IncorectSenderAccount.into());
-        }
 
         assert_account_key(authority_info, &pair.base.address)?;
         assert_account_key(sender_info, &pair.derived.address)?;
@@ -155,21 +139,18 @@ impl Processor {
         refunder_account_info: &AccountInfo<'a>,
         _sys_prog: &AccountInfo<'a>,
     ) -> ProgramResult {
-        assert_owned_by(reward_manager_info, program_id)?;
-        assert_owned_by(sender_info, program_id)?;
-
         if !manager_account_info.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
-        let sender_account = SenderAccount::unpack(&sender_info.data.borrow())?;
-        if sender_account.reward_manager != *reward_manager_info.key {
-            return Err(AudiusProgramError::WrongRewardManagerKey.into());
-        }
+
+        assert_owned_by(reward_manager_info, program_id)?;
+        assert_owned_by(sender_info, program_id)?;
 
         let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
-        if reward_manager.manager != *manager_account_info.key {
-            return Err(AudiusProgramError::IncorectManagerAccount.into());
-        }
+        assert_account_key(manager_account_info, &reward_manager.manager)?;
+
+        let sender_account = SenderAccount::unpack(&sender_info.data.borrow())?;
+        assert_account_key(reward_manager_info, &sender_account.reward_manager)?;
 
         Self::transfer_all(sender_info, refunder_account_info)?;
 
@@ -343,7 +324,7 @@ impl Processor {
         )?;
 
         // Transfer reward tokens to user
-        token_transfer(
+        spl_token_transfer(
             program_id,
             &reward_manager_info.key,
             reward_token_source_info,

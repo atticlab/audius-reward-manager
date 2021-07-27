@@ -2,7 +2,7 @@
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
-    program::invoke_signed,
+    program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::{Pubkey, PubkeyError},
@@ -151,9 +151,26 @@ pub fn get_derived_address(program_id: &Pubkey, base: &Pubkey, seed: &[u8]) -> (
     Pubkey::find_program_address(&[&base.to_bytes()[..32], seed], program_id)
 }
 
+/// Initialize SPL accont instruction.
+pub fn spl_initialize_account<'a>(
+    account: AccountInfo<'a>,
+    mint: AccountInfo<'a>,
+    authority: AccountInfo<'a>,
+    rent: AccountInfo<'a>,
+) -> ProgramResult {
+    let ix = spl_token::instruction::initialize_account(
+        &spl_token::id(),
+        account.key,
+        mint.key,
+        authority.key,
+    )?;
+
+    invoke(&ix, &[account, mint, authority, rent])
+}
+
 /// Transfer tokens with program address
 #[allow(clippy::too_many_arguments)]
-pub fn token_transfer<'a>(
+pub fn spl_token_transfer<'a>(
     program_id: &Pubkey,
     reward_manager: &Pubkey,
     source: &AccountInfo<'a>,
