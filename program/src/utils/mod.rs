@@ -54,9 +54,21 @@ pub fn assert_unique_senders(messages: &[VerifiedMessage]) -> ProgramResult {
 }
 
 /// Assert messages
-pub fn assert_messages(valid_message: &[u8], messages: &[VerifiedMessage]) -> ProgramResult {
-    for VerifiedMessage { message, .. } in messages {
-        if valid_message != message {
+pub fn assert_messages(
+    valid_message: &[u8],
+    valid_bot_oracle_message: &[u8],
+    bot_oracle_address: &EthereumAddress,
+    messages: &[VerifiedMessage],
+) -> ProgramResult {
+    for VerifiedMessage {
+        message, address, ..
+    } in messages
+    {
+        if address == bot_oracle_address {
+            if valid_bot_oracle_message != message {
+                return Err(AudiusProgramError::IncorrectMessages.into());
+            }
+        } else if valid_message != message {
             return Err(AudiusProgramError::IncorrectMessages.into());
         }
     }
@@ -152,7 +164,7 @@ pub fn token_transfer<'a>(
         source.key,
         destination.key,
         authority.key,
-        &[&authority.key],
+        &[],
         amount,
     )?;
     invoke_signed(
