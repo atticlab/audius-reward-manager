@@ -175,7 +175,7 @@ pub fn create_sender(
         AccountMeta::new_readonly(*manager_account, true),
         AccountMeta::new_readonly(pair.base.address, false),
         AccountMeta::new(*funder_account, true),
-        AccountMeta::new(pair.derive.address, false),
+        AccountMeta::new(pair.derived.address, false),
         AccountMeta::new_readonly(system_program::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
     ];
@@ -207,7 +207,7 @@ pub fn delete_sender(
     let accounts = vec![
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*manager_account, true),
-        AccountMeta::new(pair.derive.address, false),
+        AccountMeta::new(pair.derived.address, false),
         AccountMeta::new(*refunder_account, false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];
@@ -247,7 +247,7 @@ where
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(pair.base.address, false),
         AccountMeta::new(*funder, true),
-        AccountMeta::new(pair.derive.address, false),
+        AccountMeta::new(pair.derived.address, false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
         AccountMeta::new_readonly(system_program::id(), false),
@@ -323,7 +323,7 @@ pub fn transfer(
         AccountMeta::new_readonly(transfer_account.base.address, false),
         AccountMeta::new(*reward_token_source, false),
         AccountMeta::new(*reward_token_recipient, false),
-        AccountMeta::new(transfer_account.derive.address, false),
+        AccountMeta::new(transfer_account.derived.address, false),
         AccountMeta::new_readonly(*bot_oracle, false),
         AccountMeta::new(*payer, true),
         AccountMeta::new_readonly(sysvar::rent::id(), false),

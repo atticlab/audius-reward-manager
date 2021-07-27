@@ -60,7 +60,6 @@ async fn success() {
     let oracle_priv_key = SecretKey::parse(&key).unwrap();
     let secp_oracle_pubkey = PublicKey::from_secret_key(&oracle_priv_key);
     let eth_oracle_address = construct_eth_pubkey(&secp_oracle_pubkey);
-    let oracle_operator: EthereumAddress = rng.gen();
 
     let tokens_amount = 10_000u64;
     let recipient_eth_key = [7u8; 20];
@@ -95,7 +94,7 @@ async fn success() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for item in keys.iter().enumerate() {

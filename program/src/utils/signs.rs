@@ -67,7 +67,7 @@ pub fn get_eth_addresses<'a>(
             ]
             .concat(),
         )?;
-        if generated_sender_key.derive.address != *signer.key {
+        if generated_sender_key.derived.address != *signer.key {
             return Err(ProgramError::InvalidSeeds);
         }
         if senders_eth_addresses.contains(&signer_data.eth_address) {
@@ -90,10 +90,23 @@ pub fn get_signer_from_secp_instruction(secp_instruction_data: Vec<u8>) -> Ether
     instruction_signer
 }
 
+// meta (12) + address (20) + signature (65) = 97
+const MESSAGE_DATA_OFFSET: usize = 97;
+
+pub fn check_message_from_secp_instruction(
+    secp_instruction_data: Vec<u8>,
+    expected_message: &[u8],
+) -> Result<(), ProgramError> {
+    let message = secp_instruction_data[MESSAGE_DATA_OFFSET..].to_vec();
+    if message != *expected_message {
+        Err(AudiusProgramError::SignatureVerificationFailed.into())
+    } else {
+        Ok(())
+    }
+}
+
 pub fn get_message_from_secp_instruction(secp_instruction_data: Vec<u8>) -> VoteMessage {
-    //NOTE: meta (12) + address (20) + signature (65) = 97
-    let message_data_offset = 97;
-    secp_instruction_data[message_data_offset..]
+    secp_instruction_data[MESSAGE_DATA_OFFSET..]
         .to_vec()
         .as_slice()
         .try_into()
@@ -151,11 +164,7 @@ pub fn check_secp_add_sender(
     for secp_instruction in secp_instructions {
         let eth_signer = get_signer_from_secp_instruction(secp_instruction.data.clone());
         check_signer(&mut checkmap, &eth_signer)?;
-
-        let message = get_message_from_secp_instruction(secp_instruction.data);
-        if message != *expected_message {
-            return Err(AudiusProgramError::SignatureVerificationFailed.into());
-        }
+        check_message_from_secp_instruction(secp_instruction.data, expected_message.as_ref())?;
     }
 
     Ok(())

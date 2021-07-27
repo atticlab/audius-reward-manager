@@ -46,7 +46,7 @@ async fn success() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     let pair = get_address_pair(
@@ -74,7 +74,7 @@ async fn success() {
         &token_account,
         &mint.pubkey(),
         &manager_account.pubkey(),
-        3 as u8,
+        3,
     )
     .await;
 
@@ -128,7 +128,7 @@ async fn success() {
         SenderAccount::new(reward_manager.pubkey(), eth_address, operator),
         context
             .banks_client
-            .get_account_data_with_borsh(pair.derive.address)
+            .get_account_data_with_borsh(pair.derived.address)
             .await
             .unwrap()
     );

@@ -91,19 +91,20 @@ pub type EthereumAddress = [u8; 20];
 /// Base PDA related with some mint
 pub struct Base {
     pub address: Pubkey,
-    pub seed: u8,
+    pub bump_seed: u8,
 }
 
 /// Derived account related with some Base and Ethereum address
 pub struct Derived {
     pub address: Pubkey,
-    pub seed: String,
+    pub seed: Vec<u8>,
+    pub bump_seed: u8,
 }
 
 /// Base with related
 pub struct AddressPair {
     pub base: Base,
-    pub derive: Derived,
+    pub derived: Derived,
 }
 
 /// Return `Base` account with seed and corresponding derive
@@ -113,17 +114,19 @@ pub fn get_address_pair(
     reward_manager: &Pubkey,
     seed: Vec<u8>,
 ) -> Result<AddressPair, PubkeyError> {
-    let (base_pk, base_seed) = get_base_address(program_id, reward_manager);
-    let (derived_pk, derive_seed) =
-        get_derived_address(program_id, &base_pk.clone(), seed.as_ref())?;
+    let (base_pk, base_bump_seed) = get_base_address(program_id, reward_manager);
+    let (derived_pk, derived_bump_seed) =
+        get_derived_address(program_id, &base_pk.clone(), &seed.as_slice());
+
     Ok(AddressPair {
         base: Base {
             address: base_pk,
-            seed: base_seed,
+            bump_seed: base_bump_seed,
         },
-        derive: Derived {
+        derived: Derived {
             address: derived_pk,
-            seed: derive_seed,
+            seed,
+            bump_seed: derived_bump_seed,
         },
     })
 }
@@ -136,13 +139,8 @@ pub fn get_base_address(program_id: &Pubkey, reward_manager: &Pubkey) -> (Pubkey
 
 /// Return derived token account address corresponding to specific
 /// ethereum account and it seed
-pub fn get_derived_address(
-    program_id: &Pubkey,
-    base: &Pubkey,
-    seeds: &[u8],
-) -> Result<(Pubkey, String), PubkeyError> {
-    let eseed = bs58::encode(seeds).into_string();
-    Pubkey::create_with_seed(&base, eseed.as_str(), program_id).map(|i| (i, eseed))
+pub fn get_derived_address(program_id: &Pubkey, base: &Pubkey, seed: &[u8]) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[&base.to_bytes()[..32], seed], program_id)
 }
 
 /// Transfer tokens with program address
@@ -172,37 +170,6 @@ pub fn token_transfer<'a>(
         &tx,
         &[source.clone(), destination.clone(), authority.clone()],
         signers,
-    )
-}
-
-/// Create account with seed signed
-#[allow(clippy::too_many_arguments)]
-pub fn create_account_with_seed<'a>(
-    program_id: &Pubkey,
-    funder: &AccountInfo<'a>,
-    account_to_create: &AccountInfo<'a>,
-    base: &AccountInfo<'a>,
-    reward_manager: &Pubkey,
-    seeds: Vec<u8>,
-    required_lamports: u64,
-    space: u64,
-    owner: &Pubkey,
-) -> ProgramResult {
-    let bump_seed = get_base_address(program_id, reward_manager).1;
-
-    let signature = &[&reward_manager.to_bytes()[..32], &[bump_seed]];
-    invoke_signed(
-        &system_instruction::create_account_with_seed(
-            &funder.key,
-            &account_to_create.key,
-            &base.key,
-            &bs58::encode(seeds).into_string(),
-            required_lamports,
-            space,
-            owner,
-        ),
-        &[funder.clone(), account_to_create.clone(), base.clone()],
-        &[signature],
     )
 }
 

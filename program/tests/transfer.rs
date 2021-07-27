@@ -58,7 +58,7 @@ async fn success() {
         &token_account,
         &mint.pubkey(),
         &manager_account.pubkey(),
-        1,
+        3,
     )
     .await;
 
@@ -117,7 +117,7 @@ async fn success() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for item in keys.iter().enumerate() {
@@ -181,6 +181,17 @@ async fn success() {
     context.banks_client.process_transaction(tx).await.unwrap();
 
     /* Transfer */
+    let transfer_acc_created = get_address_pair(
+        &audius_reward_manager::id(),
+        &reward_manager.pubkey(),
+        [
+            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+            transfer_id.as_ref(),
+        ]
+        .concat(),
+    )
+    .unwrap();
+
     let recipient_sol_key = claimable_tokens::utils::program::get_address_pair(
         &claimable_tokens::id(),
         &mint.pubkey(),
@@ -197,7 +208,7 @@ async fn success() {
                 &reward_manager.pubkey(),
                 &token_account.pubkey(),
                 &recipient_sol_key.derive.address,
-                &oracle.derive.address,
+                &oracle.base.address,
                 &context.payer.pubkey(),
                 10_000u64,
                 transfer_id.to_string(),
@@ -210,4 +221,14 @@ async fn success() {
     );
 
     context.banks_client.process_transaction(tx).await.unwrap();
+
+    let transfer_acc_data = get_account(&mut context, &transfer_acc_created.derived.address)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        transfer_acc_data.lamports,
+        rent.minimum_balance(TRANSFER_ACC_SPACE)
+    );
+    assert_eq!(transfer_acc_data.data.len(), TRANSFER_ACC_SPACE);
 }
