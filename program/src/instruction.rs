@@ -97,8 +97,7 @@ pub enum Instructions {
     ///   0. `[writable]` New or existing account storing verified messages
     ///   1. `[]` Reward manager
     ///   2. `[]` Sender
-    ///   3. `[writable]` Transfer account to create
-    ///   4. `[]` Sysvar instruction id
+    ///   3. `[]` Sysvar instruction id
     VerifyTransferSignature,
 
     ///   Transfer tokens to pointed receiver
