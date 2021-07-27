@@ -312,13 +312,16 @@ pub fn transfer(
         [TRANSFER_SEED_PREFIX.as_bytes().as_ref(), id.as_ref()].concat(),
     )?;
 
+    let reward_manager_authority = transfer_account.base.address;
+    let transfer_account = transfer_account.derived.address;
+
     let accounts = vec![
         AccountMeta::new(*verified_messages, false),
         AccountMeta::new_readonly(*reward_manager, false),
-        AccountMeta::new_readonly(transfer_account.base.address, false),
+        AccountMeta::new_readonly(reward_manager_authority, false),
         AccountMeta::new(*reward_token_source, false),
         AccountMeta::new(*reward_token_recipient, false),
-        AccountMeta::new(transfer_account.derived.address, false),
+        AccountMeta::new(transfer_account, false),
         AccountMeta::new_readonly(*bot_oracle, false),
         AccountMeta::new(*payer, true),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
