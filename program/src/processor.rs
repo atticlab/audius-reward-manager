@@ -278,7 +278,7 @@ impl Processor {
 
         let verified_messages = VerifiedMessages::unpack(&verified_messages_info.data.borrow())?;
         // Check signs for minimum required votes
-        if verified_messages.messages.len() != reward_manager.min_votes as usize {
+        if verified_messages.messages.len() != (reward_manager.min_votes + 1) as usize {
             return Err(AudiusProgramError::NotEnoughSigners.into());
         }
 

@@ -171,16 +171,21 @@ async fn success() {
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    // Add 3 messages
+    let mut bot_oracle_message_buf: [u8; 128] = [0u8; 128];
+    for (i, b) in bot_oracle_message.iter().enumerate() {
+        bot_oracle_message_buf[i] = *b;
+    }
+
+    // Add 3 messages and bot oracle
+    let oracle_sign =
+        new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message_buf.as_ref(), 0);
+    instructions.push(oracle_sign);
+
     for item in keys.iter().enumerate() {
-        let oracle_sign =
-            new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 0);
-        instructions.push(oracle_sign);
-
         let priv_key = SecretKey::parse(item.1).unwrap();
-        let inst = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), 1);
+        let inst =
+            new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), (item.0 + 1) as u8);
         instructions.push(inst);
-
         instructions.push(
             instruction::verify_transfer_signature(
                 &audius_reward_manager::id(),

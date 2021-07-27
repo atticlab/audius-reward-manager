@@ -68,6 +68,17 @@ pub fn assert_unique_senders(messages: &[VerifiedMessage]) -> ProgramResult {
     Ok(())
 }
 
+/// Assert zero slice
+pub fn assert_slice_zero(slice: &[u8]) -> bool {
+    for b in slice {
+        if *b != 0u8 {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 /// Assert messages
 pub fn assert_messages(
     valid_message: &[u8],
@@ -75,17 +86,29 @@ pub fn assert_messages(
     bot_oracle_address: &EthereumAddress,
     messages: &[VerifiedMessage],
 ) -> ProgramResult {
+    let mut oracle_signed = false;
+
     for VerifiedMessage {
         message, address, ..
     } in messages
     {
         if address == bot_oracle_address {
-            if valid_bot_oracle_message != &message[..valid_bot_oracle_message.len()] {
+            if valid_bot_oracle_message != &message[..valid_bot_oracle_message.len()]
+                || !assert_slice_zero(&message[valid_bot_oracle_message.len()..])
+            {
                 return Err(AudiusProgramError::IncorrectMessages.into());
+            } else {
+                oracle_signed = true;
             }
-        } else if valid_message != &message[..valid_message.len()] {
+        } else if valid_message != &message[..valid_message.len()]
+            || !assert_slice_zero(&message[valid_message.len()..])
+        {
             return Err(AudiusProgramError::IncorrectMessages.into());
         }
+    }
+
+    if !oracle_signed {
+        return Err(AudiusProgramError::NotEnoughSigners.into());
     }
 
     Ok(())
