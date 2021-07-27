@@ -95,6 +95,15 @@ async fn success() {
     .await
     .unwrap();
 
+    let bot_oracle_message_vec = [
+        recipient_eth_key.as_ref(),
+        b"_",
+        tokens_amount.to_le_bytes().as_ref(),
+        b"_",
+        transfer_id.as_ref(),
+    ]
+    .concat();
+
     let senders_message_vec = [
         recipient_eth_key.as_ref(),
         b"_",
@@ -106,14 +115,8 @@ async fn success() {
     ]
     .concat();
 
-    let bot_oracle_message = [
-        recipient_eth_key.as_ref(),
-        b"_",
-        tokens_amount.to_le_bytes().as_ref(),
-        b"_",
-        transfer_id.as_ref(),
-    ]
-    .concat();
+    let mut bot_oracle_message: VoteMessage = [0; 128];
+    bot_oracle_message[..bot_oracle_message_vec.len()].copy_from_slice(&bot_oracle_message_vec);
 
     let mut senders_message: VoteMessage = [0; 128];
     senders_message[..senders_message_vec.len()].copy_from_slice(&senders_message_vec);
