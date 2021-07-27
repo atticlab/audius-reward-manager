@@ -302,14 +302,11 @@ impl Processor {
         //assert_owned_by(reward_manager_info, program_id)?;
         //assert_owned_by(bot_oracle_info, program_id)?;
 
-        let verified_messages =
-            VerifiedMessages::unpack(&verified_messages_info.data.borrow())?;
+        let verified_messages = VerifiedMessages::unpack(&verified_messages_info.data.borrow())?;
 
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        assert_initialized(&reward_manager)?;
+        let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
 
-        let bot_oracle = SenderAccount::try_from_slice(&bot_oracle_info.data.borrow())?;
-        assert_initialized(&bot_oracle)?;
+        let bot_oracle = SenderAccount::unpack(&bot_oracle_info.data.borrow())?;
 
         // Bot oracle reward manager should be correct
         assert_account_key(reward_manager_info, &bot_oracle.reward_manager)?;
@@ -365,7 +362,11 @@ impl Processor {
 
         // Pack seeds
         let bump_seed = get_base_address(program_id, transfer_account_info.key).1;
-        let signer_seeds = &[TRANSFER_SEED_PREFIX.as_bytes().as_ref(), transfer_data.id.as_ref(), &[bump_seed]];
+        let signer_seeds = &[
+            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+            transfer_data.id.as_ref(),
+            &[bump_seed],
+        ];
 
         msg!("Payer: {:?}", payer_info.key);
         msg!("Reward manager: {:?}", reward_manager_info.key);

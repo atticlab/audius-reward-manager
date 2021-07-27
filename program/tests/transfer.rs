@@ -2,18 +2,19 @@
 mod assert;
 mod utils;
 
-use std::mem::MaybeUninit;
 use audius_reward_manager::{
     error::AudiusProgramError,
     instruction,
     processor::{SENDER_SEED_PREFIX, TRANSFER_ACC_SPACE, TRANSFER_SEED_PREFIX},
-    utils::{get_address_pair, EthereumAddress},
     state::{VerifiedMessages, VoteMessage},
+    utils::{get_address_pair, EthereumAddress},
 };
 use num_traits::FromPrimitive;
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
-use solana_program::{instruction::Instruction, program_pack::Pack, pubkey::Pubkey, system_instruction};
+use solana_program::{
+    instruction::Instruction, program_pack::Pack, pubkey::Pubkey, system_instruction,
+};
 use solana_program_test::*;
 use solana_sdk::{
     instruction::InstructionError,
@@ -23,6 +24,7 @@ use solana_sdk::{
     transaction::{Transaction, TransactionError},
     transport::TransportError,
 };
+use std::mem::MaybeUninit;
 use utils::*;
 
 #[tokio::test]
@@ -72,7 +74,8 @@ async fn success() {
         &audius_reward_manager::id(),
         &reward_manager.pubkey(),
         [SENDER_SEED_PREFIX.as_ref(), eth_oracle_address.as_ref()].concat(),
-    ).unwrap();
+    )
+    .unwrap();
 
     create_sender(
         &mut context,
@@ -201,20 +204,19 @@ async fn success() {
     create_recipient_with_claimable_program(&mut context, &mint.pubkey(), recipient_eth_key).await;
 
     let tx = Transaction::new_signed_with_payer(
-        &[
-            instruction::transfer(
-                &audius_reward_manager::id(),
-                &verified_messages.pubkey(),
-                &reward_manager.pubkey(),
-                &token_account.pubkey(),
-                &recipient_sol_key.derive.address,
-                &oracle.base.address,
-                &context.payer.pubkey(),
-                10_000u64,
-                transfer_id.to_string(),
-                recipient_eth_key
-            ).unwrap()
-        ],
+        &[instruction::transfer(
+            &audius_reward_manager::id(),
+            &verified_messages.pubkey(),
+            &reward_manager.pubkey(),
+            &token_account.pubkey(),
+            &recipient_sol_key.derive.address,
+            &oracle.base.address,
+            &context.payer.pubkey(),
+            10_000u64,
+            transfer_id.to_string(),
+            recipient_eth_key,
+        )
+        .unwrap()],
         Some(&context.payer.pubkey()),
         &[&context.payer],
         context.last_blockhash,
