@@ -1,4 +1,3 @@
-#![feature(trait_alias)]
 #![deny(missing_docs)]
 
 //! Audius Reward Manager program

@@ -2,27 +2,24 @@
 
 use crate::{
     error::AudiusProgramError,
-    instruction::{AddSender, CreateSender, InitRewardManager, Instructions, Transfer},
-    is_owner,
-    state::{RewardManager, SenderAccount},
+    instruction::{
+        AddSenderArgs, CreateSenderArgs, InitRewardManagerArgs, Instructions, TransferArgs,
+    },
+    state::{RewardManager, SenderAccount, VerifiedMessage, VerifiedMessages},
     utils::*,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 use solana_program::{
     account_info::next_account_info,
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
-    program::{invoke, invoke_signed},
     program_error::ProgramError,
-    program_pack::IsInitialized,
-    program_pack::Pack,
+    program_pack::{IsInitialized, Pack},
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction, sysvar,
     sysvar::Sysvar,
 };
-use spl_token::state::Account as TokenAccount;
 
 /// Sender program account seed
 pub const SENDER_SEED_PREFIX: &str = "S_";
@@ -53,38 +50,31 @@ impl Processor {
         mint_info: &AccountInfo<'a>,
         manager_info: &AccountInfo<'a>,
         authority_info: &AccountInfo<'a>,
-        spl_token_info: &AccountInfo<'a>,
+        _spl_token_info: &AccountInfo<'a>,
         rent: &AccountInfo<'a>,
         min_votes: u8,
     ) -> ProgramResult {
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        if reward_manager.is_initialized() {
-            return Err(ProgramError::AccountAlreadyInitialized);
-        }
+        assert_owned_by(reward_manager_info, program_id)?;
 
-        let (base, _) = get_base_address(program_id, reward_manager_info.key);
-        if base != *authority_info.key {
+        let mut reward_manager =
+            RewardManager::unpack_unchecked(&reward_manager_info.data.borrow())?;
+        assert_uninitialized(&reward_manager)?;
+
+        let (reward_manager_authority, _) =
+            find_program_address(program_id, reward_manager_info.key);
+        if reward_manager_authority != *authority_info.key {
             return Err(ProgramError::InvalidAccountData);
         }
 
-        invoke(
-            &spl_token::instruction::initialize_account(
-                &spl_token::id(),
-                token_account_info.key,
-                mint_info.key,
-                &base,
-            )?,
-            &[
-                spl_token_info.clone(),
-                token_account_info.clone(),
-                mint_info.clone(),
-                authority_info.clone(),
-                rent.clone(),
-            ],
+        spl_initialize_account(
+            token_account_info.clone(),
+            mint_info.clone(),
+            authority_info.clone(),
+            rent.clone(),
         )?;
 
-        RewardManager::new(*token_account_info.key, *manager_info.key, min_votes)
-            .serialize(&mut *reward_manager_info.data.borrow_mut())?;
+        reward_manager = RewardManager::new(*token_account_info.key, *manager_info.key, min_votes);
+        RewardManager::pack(reward_manager, *reward_manager_info.data.borrow_mut())?;
 
         Ok(())
     }
@@ -106,53 +96,42 @@ impl Processor {
             return Err(ProgramError::MissingRequiredSignature);
         }
 
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        if !reward_manager.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
+        assert_owned_by(reward_manager_info, program_id)?;
 
-        if reward_manager.manager != *manager_account_info.key {
-            return Err(AudiusProgramError::IncorectManagerAccount.into());
-        }
+        let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
+        assert_account_key(manager_account_info, &reward_manager.manager)?;
 
-        let pair = get_address_pair(
-            program_id,
-            reward_manager_info.key,
-            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-        )?;
-        if *sender_info.key != pair.derive.address {
-            return Err(AudiusProgramError::IncorectSenderAccount.into());
-        }
+        let derived_seed = [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat();
+        let (reward_manager_authority, derived_address, bump_seed) =
+            find_derived_pair(program_id, reward_manager_info.key, derived_seed.as_ref());
 
-        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
+        assert_account_key(authority_info, &reward_manager_authority)?;
+        assert_account_key(sender_info, &derived_address)?;
+
+        let signers_seeds = &[
+            &reward_manager_authority.to_bytes()[..32],
+            &derived_seed.as_slice(),
+            &[bump_seed],
+        ];
 
         let rent = Rent::from_account_info(rent_info)?;
-        invoke_signed(
-            &system_instruction::create_account_with_seed(
-                funder_account_info.key,
-                sender_info.key,
-                &pair.base.address,
-                pair.derive.seed.as_str(),
-                rent.minimum_balance(SenderAccount::LEN),
-                SenderAccount::LEN as _,
-                program_id,
-            ),
-            &[
-                funder_account_info.clone(),
-                sender_info.clone(),
-                authority_info.clone(),
-            ],
-            &[signature],
+        create_account(
+            program_id,
+            funder_account_info.clone(),
+            sender_info.clone(),
+            SenderAccount::LEN,
+            &[signers_seeds],
+            &rent,
         )?;
 
-        SenderAccount::new(*reward_manager_info.key, eth_address, operator)
-            .serialize(&mut *sender_info.data.borrow_mut())?;
+        let sender_account = SenderAccount::new(*reward_manager_info.key, eth_address, operator);
+        SenderAccount::pack(sender_account, *sender_info.data.borrow_mut())?;
 
         Ok(())
     }
 
     fn process_delete_sender<'a>(
-        _program_id: &Pubkey,
+        program_id: &Pubkey,
         reward_manager_info: &AccountInfo<'a>,
         manager_account_info: &AccountInfo<'a>,
         sender_info: &AccountInfo<'a>,
@@ -162,50 +141,22 @@ impl Processor {
         if !manager_account_info.is_signer {
             return Err(ProgramError::MissingRequiredSignature);
         }
-        let sender = SenderAccount::try_from_slice(&sender_info.data.borrow())?;
-        if sender.reward_manager != *reward_manager_info.key {
-            return Err(AudiusProgramError::WrongRewardManagerKey.into());
-        }
 
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        if reward_manager.manager != *manager_account_info.key {
-            return Err(AudiusProgramError::IncorectManagerAccount.into());
-        }
+        assert_owned_by(reward_manager_info, program_id)?;
+        assert_owned_by(sender_info, program_id)?;
+
+        let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
+        assert_account_key(manager_account_info, &reward_manager.manager)?;
+
+        let sender_account = SenderAccount::unpack(&sender_info.data.borrow())?;
+        assert_account_key(reward_manager_info, &sender_account.reward_manager)?;
 
         Self::transfer_all(sender_info, refunder_account_info)?;
 
         Ok(())
     }
 
-    /// Checks that the user signed message with his ethereum private key
-    fn check_secp_signs(
-        program_id: &Pubkey,
-        reward_manager_info: &AccountInfo,
-        instruction_info: &AccountInfo,
-        expected_signers: Vec<&AccountInfo>,
-        extraction_depth: usize,
-        verifier: impl VerifierFn,
-    ) -> ProgramResult {
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        if expected_signers.len() < reward_manager.min_votes as _ {
-            return Err(AudiusProgramError::NotEnoughSigners.into());
-        }
-
-        let index = sysvar::instructions::load_current_index(&instruction_info.data.borrow());
-        // instruction can't be first in transaction
-        // because must follow after `new_secp256k1_instruction`
-        if index == 0 {
-            return Err(AudiusProgramError::Secp256InstructionMissing.into());
-        }
-
-        let secp_instructions = get_secp_instructions(index, extraction_depth, instruction_info)?;
-
-        let (senders_eth_addresses, operators_set) =
-            get_eth_addresses(program_id, reward_manager_info.key, expected_signers)?;
-
-        verifier(secp_instructions, senders_eth_addresses, operators_set)
-    }
-
+    #[allow(clippy::too_many_arguments)]
     fn process_add_sender<'a>(
         program_id: &Pubkey,
         reward_manager_info: &AccountInfo<'a>,
@@ -218,161 +169,196 @@ impl Processor {
         eth_address: EthereumAddress,
         operator: EthereumAddress,
     ) -> ProgramResult {
-        let reward_manager = RewardManager::try_from_slice(&reward_manager_info.data.borrow())?;
-        if !reward_manager.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
+        assert_owned_by(reward_manager_info, program_id)?;
+
+        let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
+        if signers_info.len() < reward_manager.min_votes.into() {
+            return Err(AudiusProgramError::NotEnoughSigners.into());
         }
 
-        let verifier = build_verify_secp_add_sender(reward_manager_info.key.clone(), eth_address);
-        Self::check_secp_signs(
+        check_secp_add_sender(
             program_id,
-            &reward_manager_info,
+            &reward_manager_info.key,
             instructions_info,
             signers_info.clone(),
             signers_info.len(),
-            verifier,
+            eth_address,
         )?;
 
-        let pair = get_address_pair(
-            program_id,
-            reward_manager_info.key,
-            [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
-        )?;
+        let derived_seed = [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat();
+        let (reward_manager_authority, derived_address, bump_seed) =
+            find_derived_pair(program_id, reward_manager_info.key, derived_seed.as_ref());
 
-        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
+        assert_account_key(authority_info, &reward_manager_authority)?;
+        assert_account_key(new_sender_info, &derived_address)?;
+
+        let signers_seeds = &[
+            &reward_manager_authority.to_bytes()[..32],
+            &derived_seed.as_slice(),
+            &[bump_seed],
+        ];
 
         let rent = Rent::from_account_info(rent_info)?;
-        invoke_signed(
-            &system_instruction::create_account_with_seed(
-                funder_info.key,
-                &pair.derive.address,
-                &pair.base.address,
-                pair.derive.seed.as_str(),
-                rent.minimum_balance(SenderAccount::LEN),
-                SenderAccount::LEN as _,
-                program_id,
-            ),
-            &[
-                funder_info.clone(),
-                new_sender_info.clone(),
-                authority_info.clone(),
-            ],
-            &[signature],
+        create_account(
+            program_id,
+            funder_info.clone(),
+            new_sender_info.clone(),
+            SenderAccount::LEN,
+            &[signers_seeds],
+            &rent,
         )?;
 
-        SenderAccount::new(*reward_manager_info.key, eth_address, operator)
-            .serialize(&mut *new_sender_info.data.borrow_mut())?;
+        let sender_account = SenderAccount::new(*reward_manager_info.key, eth_address, operator);
+        SenderAccount::pack(sender_account, *new_sender_info.data.borrow_mut())?;
 
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn process_verify_transfer_signature<'a>(
+        program_id: &Pubkey,
+        verified_messages_info: &AccountInfo<'a>,
+        reward_manager_info: &AccountInfo<'a>,
+        sender_info: &AccountInfo<'a>,
+        instruction_info: &AccountInfo<'a>,
+    ) -> ProgramResult {
+        assert_owned_by(verified_messages_info, program_id)?;
+        assert_owned_by(reward_manager_info, program_id)?;
+        assert_owned_by(sender_info, program_id)?;
+
+        let sender_account = SenderAccount::unpack(&sender_info.data.borrow())?;
+        assert_account_key(reward_manager_info, &sender_account.reward_manager)?;
+
+        let mut verified_messages =
+            VerifiedMessages::unpack_unchecked(&verified_messages_info.data.borrow())?;
+        if verified_messages.is_initialized() {
+            assert_account_key(reward_manager_info, &verified_messages.reward_manager)?;
+        } else {
+            verified_messages = VerifiedMessages::new(*reward_manager_info.key);
+        }
+
+        // Check signatures from prev instruction
+        let message = check_secp_verify_transfer(instruction_info, &sender_account.eth_address)?;
+
+        verified_messages.add(VerifiedMessage {
+            address: sender_account.eth_address,
+            message,
+            operator: sender_account.operator,
+        });
+
+        // Check unique senders & operators
+        assert_unique_senders(&verified_messages.messages)?;
+
+        VerifiedMessages::pack(verified_messages, *verified_messages_info.data.borrow_mut())?;
+
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn process_transfer<'a>(
         program_id: &Pubkey,
-        reward_manager: &AccountInfo<'a>,
-        reward_manager_authority: &AccountInfo<'a>,
-        recipient: &AccountInfo<'a>,
-        vault_token_account: &AccountInfo<'a>,
-        bot_oracle: &AccountInfo<'a>,
-        funder: &AccountInfo<'a>,
-        transfer_acc_to_create: &AccountInfo<'a>,
-        instruction_info: &AccountInfo<'a>,
+        verified_messages_info: &AccountInfo<'a>,
+        reward_manager_info: &AccountInfo<'a>,
+        reward_manager_authority_info: &AccountInfo<'a>,
+        reward_token_source_info: &AccountInfo<'a>,
+        reward_token_recipient_info: &AccountInfo<'a>,
+        transfer_account_info: &AccountInfo<'a>,
+        bot_oracle_info: &AccountInfo<'a>,
+        payer_info: &AccountInfo<'a>,
         rent_info: &AccountInfo<'a>,
-        transfer_data: Transfer,
-        senders: Vec<&AccountInfo<'a>>,
+        transfer_data: TransferArgs,
     ) -> ProgramResult {
-        let reward_manager_data = RewardManager::try_from_slice(&reward_manager.data.borrow())?;
-        if !reward_manager_data.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
+        let rent = &Rent::from_account_info(rent_info)?;
+
+        assert_owned_by(verified_messages_info, program_id)?;
+        assert_owned_by(reward_manager_info, program_id)?;
+        assert_owned_by(bot_oracle_info, program_id)?;
+
+        let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
+
+        let verified_messages = VerifiedMessages::unpack(&verified_messages_info.data.borrow())?;
+        // Check signs for minimum required votes
+        if verified_messages.messages.len() != (reward_manager.min_votes + 1) as usize {
+            return Err(AudiusProgramError::NotEnoughSigners.into());
         }
 
-        let bot_oracle_data = SenderAccount::try_from_slice(&bot_oracle.data.borrow())?;
-        if !bot_oracle_data.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
+        let bot_oracle = SenderAccount::unpack(&bot_oracle_info.data.borrow())?;
+        assert_account_key(reward_manager_info, &bot_oracle.reward_manager)?;
 
-        is_owner!(*program_id, reward_manager, bot_oracle)?;
+        // Valid senders message
+        let valid_message = [
+            transfer_data.eth_recipient.as_ref(),
+            b"_",
+            transfer_data.amount.to_le_bytes().as_ref(),
+            b"_",
+            transfer_data.id.as_ref(),
+            b"_",
+            bot_oracle.eth_address.as_ref(),
+        ]
+        .concat();
 
-        let generated_bot_oracle_key = get_address_pair(
-            program_id,
-            reward_manager.key,
-            [
-                SENDER_SEED_PREFIX.as_ref(),
-                bot_oracle_data.eth_address.as_ref(),
-            ]
-            .concat(),
+        // Valid bot oracle message
+        let valid_bot_oracle_message = [
+            transfer_data.eth_recipient.as_ref(),
+            b"_",
+            transfer_data.amount.to_le_bytes().as_ref(),
+            b"_",
+            transfer_data.id.as_ref(),
+        ]
+        .concat();
+
+        // Check messages and bot oracles
+        assert_messages(
+            &valid_message,
+            &valid_bot_oracle_message,
+            &bot_oracle.eth_address,
+            &verified_messages.messages,
         )?;
 
-        if generated_bot_oracle_key.derive.address != *bot_oracle.key {
-            return Err(ProgramError::InvalidSeeds);
-        }
-
-        let generated_transfer_acc_to_create = get_address_pair(
+        // Transfer reward tokens to user
+        spl_token_transfer(
             program_id,
-            reward_manager.key,
-            [
-                TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-                transfer_data.id.as_ref(),
-            ]
-            .concat(),
-        )?;
-
-        if generated_transfer_acc_to_create.derive.address != *transfer_acc_to_create.key {
-            return Err(ProgramError::InvalidSeeds);
-        }
-
-        let vault_token_acc_data = TokenAccount::unpack(&vault_token_account.data.borrow())?;
-
-        let generated_recipient_key = claimable_tokens::utils::program::get_address_pair(
-            &claimable_tokens::id(),
-            &vault_token_acc_data.mint,
-            transfer_data.eth_recipient,
-        )?;
-
-        if generated_recipient_key.derive.address != *recipient.key {
-            return Err(AudiusProgramError::WrongRecipientKey.into());
-        }
-
-        let verifier = build_verify_secp_transfer(bot_oracle_data, transfer_data.clone());
-        Self::check_secp_signs(
-            program_id,
-            reward_manager,
-            instruction_info,
-            senders.clone(),
-            // NOTE: +1 it's bot oracle
-            senders.len() + 1,
-            verifier,
-        )?;
-
-        token_transfer(
-            program_id,
-            reward_manager.key,
-            vault_token_account,
-            recipient,
-            reward_manager_authority,
+            &reward_manager_info.key,
+            reward_token_source_info,
+            reward_token_recipient_info,
+            reward_manager_authority_info,
             transfer_data.amount,
         )?;
 
-        // Additional check to prevent existing account creation on mainnet
-        if transfer_acc_to_create.lamports() > 0 || transfer_acc_to_create.data_len() > 0 {
-            return Err(AudiusProgramError::AlreadySent.into());
-        }
+        let derived_seed = [
+            TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+            transfer_data.id.as_ref(),
+        ]
+        .concat();
+        let (reward_manager_authority, _, bump_seed) =
+            find_derived_pair(program_id, reward_manager_info.key, derived_seed.as_ref());
 
-        let rent = Rent::from_account_info(rent_info)?;
-        create_account_with_seed(
+        let signers_seeds = &[
+            &reward_manager_authority.to_bytes()[..32],
+            &derived_seed.as_slice(),
+            &[bump_seed],
+        ];
+
+        // Create deterministic account on-chain
+        create_account(
             program_id,
-            funder,
-            transfer_acc_to_create,
-            reward_manager_authority,
-            reward_manager.key,
-            [
-                TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
-                transfer_data.id.as_ref(),
-            ]
-            .concat(),
-            rent.minimum_balance(TRANSFER_ACC_SPACE),
-            TRANSFER_ACC_SPACE as u64,
-            program_id,
-        )
+            payer_info.clone(),
+            transfer_account_info.clone(),
+            0,
+            &[signers_seeds],
+            rent,
+        )?;
+
+        // Delete verified messages account
+        let verified_messages_lamports = verified_messages_info.lamports();
+        let payer_lamports = payer_info.lamports();
+
+        **verified_messages_info.lamports.borrow_mut() = 0u64;
+        **payer_info.lamports.borrow_mut() = payer_lamports
+            .checked_add(verified_messages_lamports)
+            .ok_or(AudiusProgramError::MathOverflow)?;
+
+        Ok(())
     }
 
     /// Processes an instruction
@@ -383,8 +369,9 @@ impl Processor {
     ) -> ProgramResult {
         let instruction = Instructions::try_from_slice(input)?;
         let account_info_iter = &mut accounts.iter();
+
         match instruction {
-            Instructions::InitRewardManager(InitRewardManager { min_votes }) => {
+            Instructions::InitRewardManager(InitRewardManagerArgs { min_votes }) => {
                 msg!("Instruction: InitRewardManager");
 
                 let reward_manager = next_account_info(account_info_iter)?;
@@ -407,7 +394,7 @@ impl Processor {
                     min_votes,
                 )
             }
-            Instructions::CreateSender(CreateSender {
+            Instructions::CreateSender(CreateSenderArgs {
                 eth_address,
                 operator,
             }) => {
@@ -452,7 +439,7 @@ impl Processor {
                     sys_prog,
                 )
             }
-            Instructions::AddSender(AddSender {
+            Instructions::AddSender(AddSenderArgs {
                 eth_address,
                 operator,
             }) => {
@@ -480,44 +467,57 @@ impl Processor {
                     operator,
                 )
             }
-            Instructions::Transfer(Transfer {
+            Instructions::VerifyTransferSignature => {
+                msg!("Instruction: VerifyTransferSignature");
+
+                let verified_messages = next_account_info(account_info_iter)?;
+                let reward_manager = next_account_info(account_info_iter)?;
+                let sender = next_account_info(account_info_iter)?;
+                let instructions_info = next_account_info(account_info_iter)?;
+
+                Self::process_verify_transfer_signature(
+                    program_id,
+                    verified_messages,
+                    reward_manager,
+                    sender,
+                    instructions_info,
+                )
+            }
+            Instructions::Transfer(TransferArgs {
                 amount,
                 id,
                 eth_recipient,
             }) => {
                 msg!("Instruction: Transfer");
 
-                let reward_manager = next_account_info(account_info_iter)?;
-                let reward_manager_authority = next_account_info(account_info_iter)?;
-                let recipient = next_account_info(account_info_iter)?;
-                let vault_token_account = next_account_info(account_info_iter)?;
-                let bot_oracle = next_account_info(account_info_iter)?;
-                let funder = next_account_info(account_info_iter)?;
-                let transfer_acc_to_create = next_account_info(account_info_iter)?;
-                let instruction_info = next_account_info(account_info_iter)?;
+                let verified_messages_info = next_account_info(account_info_iter)?;
+                let reward_manager_info = next_account_info(account_info_iter)?;
+                let reward_manager_authority_info = next_account_info(account_info_iter)?;
+                let reward_token_source_info = next_account_info(account_info_iter)?;
+                let reward_token_recipient_info = next_account_info(account_info_iter)?;
+                let transfer_account_info = next_account_info(account_info_iter)?;
+                let bot_oracle_info = next_account_info(account_info_iter)?;
+                let payer_info = next_account_info(account_info_iter)?;
                 let rent_info = next_account_info(account_info_iter)?;
-                let _spl_token_program = next_account_info(account_info_iter)?;
-                let _system_program = next_account_info(account_info_iter)?;
-
-                let signers = account_info_iter.collect::<Vec<&AccountInfo>>();
+                let _token_program_id = next_account_info(account_info_iter)?;
+                let _system_program_id = next_account_info(account_info_iter)?;
 
                 Self::process_transfer(
                     program_id,
-                    reward_manager,
-                    reward_manager_authority,
-                    recipient,
-                    vault_token_account,
-                    bot_oracle,
-                    funder,
-                    transfer_acc_to_create,
-                    instruction_info,
+                    verified_messages_info,
+                    reward_manager_info,
+                    reward_manager_authority_info,
+                    reward_token_source_info,
+                    reward_token_recipient_info,
+                    transfer_account_info,
+                    bot_oracle_info,
+                    payer_info,
                     rent_info,
-                    Transfer {
+                    TransferArgs {
                         amount,
                         id,
                         eth_recipient,
                     },
-                    signers,
                 )
             }
         }
