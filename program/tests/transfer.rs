@@ -3,13 +3,11 @@ mod assert;
 mod utils;
 
 use audius_reward_manager::{
-    error::AudiusProgramError,
     instruction,
     processor::{SENDER_SEED_PREFIX, TRANSFER_ACC_SPACE, TRANSFER_SEED_PREFIX},
     state::{VerifiedMessages, VoteMessage},
     utils::{get_address_pair, EthereumAddress},
 };
-use num_traits::FromPrimitive;
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
 use solana_program::{
@@ -17,12 +15,7 @@ use solana_program::{
 };
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::InstructionError,
-    secp256k1_instruction::*,
-    signature::Keypair,
-    signer::Signer,
-    transaction::{Transaction, TransactionError},
-    transport::TransportError,
+    secp256k1_instruction::*, signature::Keypair, signer::Signer, transaction::Transaction,
 };
 use std::mem::MaybeUninit;
 use utils::*;
@@ -60,7 +53,7 @@ async fn success() {
         &token_account,
         &mint.pubkey(),
         &manager_account.pubkey(),
-        1,
+        3,
     )
     .await;
 
@@ -90,6 +83,16 @@ async fn success() {
     let recipient_eth_key = [7u8; 20];
     let transfer_id = "4r4t23df32543f55";
 
+    mint_tokens_to(
+        &mut context,
+        &mint.pubkey(),
+        &token_account.pubkey(),
+        &mint_authority,
+        tokens_amount,
+    )
+    .await
+    .unwrap();
+
     let senders_message_vec = [
         recipient_eth_key.as_ref(),
         b"_",
@@ -98,6 +101,15 @@ async fn success() {
         transfer_id.as_ref(),
         b"_",
         eth_oracle_address.as_ref(),
+    ]
+    .concat();
+
+    let bot_oracle_message = [
+        recipient_eth_key.as_ref(),
+        b"_",
+        tokens_amount.to_le_bytes().as_ref(),
+        b"_",
+        transfer_id.as_ref(),
     ]
     .concat();
 
@@ -137,47 +149,52 @@ async fn success() {
         .await;
     }
 
-    mint_tokens_to(
-        &mut context,
-        &mint.pubkey(),
-        &token_account.pubkey(),
-        &mint_authority,
-        tokens_amount,
-    )
-    .await
-    .unwrap();
-
     let mut instructions = Vec::<Instruction>::new();
 
     let verified_messages = Keypair::new();
 
-    instructions.push(system_instruction::create_account(
-        &context.payer.pubkey(),
-        &verified_messages.pubkey(),
-        rent.minimum_balance(VerifiedMessages::LEN),
-        VerifiedMessages::LEN as u64,
-        &audius_reward_manager::id(),
-    ));
-
-    let priv_key = SecretKey::parse(&keys[0]).unwrap();
-    let sender_sign = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), 1);
-    instructions.push(sender_sign);
-
-    instructions.push(
-        instruction::verify_transfer_signature(
-            &audius_reward_manager::id(),
-            &verified_messages.pubkey(),
-            &reward_manager.pubkey(),
-            &signers[0],
+    let tx = Transaction::new_signed_with_payer(
+        &[system_instruction::create_account(
             &context.payer.pubkey(),
-        )
-        .unwrap(),
+            &verified_messages.pubkey(),
+            rent.minimum_balance(VerifiedMessages::LEN),
+            VerifiedMessages::LEN as u64,
+            &audius_reward_manager::id(),
+        )],
+        Some(&context.payer.pubkey()),
+        &[&context.payer, &verified_messages],
+        context.last_blockhash,
     );
+
+    context.banks_client.process_transaction(tx).await.unwrap();
+
+    // Add 3 messages
+    let iter = keys.iter().enumerate().map(|i| (i.0, i.1));
+    for item in iter {
+        let oracle_sign =
+            new_secp256k1_instruction_2_0(&oracle_priv_key, bot_oracle_message.as_ref(), 0);
+        instructions.push(oracle_sign);
+
+        let priv_key = SecretKey::parse(item.1).unwrap();
+        let inst = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), 1);
+        instructions.push(inst);
+
+        instructions.push(
+            instruction::verify_transfer_signature(
+                &audius_reward_manager::id(),
+                &verified_messages.pubkey(),
+                &reward_manager.pubkey(),
+                &signers[item.0],
+                &context.payer.pubkey(),
+            )
+            .unwrap(),
+        );
+    }
 
     let tx = Transaction::new_signed_with_payer(
         &instructions,
         Some(&context.payer.pubkey()),
-        &[&context.payer, &verified_messages],
+        &[&context.payer],
         context.last_blockhash,
     );
 

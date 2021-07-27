@@ -297,10 +297,9 @@ impl Processor {
     ) -> ProgramResult {
         let rent = &Rent::from_account_info(rent_info)?;
 
-        // FIX: ownership
-        //assert_owned_by(verified_messages_info, program_id)?;
-        //assert_owned_by(reward_manager_info, program_id)?;
-        //assert_owned_by(bot_oracle_info, program_id)?;
+        assert_owned_by(verified_messages_info, program_id)?;
+        assert_owned_by(reward_manager_info, program_id)?;
+        assert_owned_by(bot_oracle_info, program_id)?;
 
         let reward_manager = RewardManager::unpack(&reward_manager_info.data.borrow())?;
 
@@ -368,11 +367,6 @@ impl Processor {
             &pair.derived.seed.as_slice(),
             &[pair.derived.bump_seed],
         ];
-
-        msg!("Payer: {:?}", payer_info.key);
-        msg!("Reward manager: {:?}", reward_manager_info.key);
-        msg!("Transfer account: {:?}", transfer_account_info.key);
-        msg!("Authroity: {:?}", reward_manager_authority_info.key);
 
         // Create deterministic account on-chain
         create_account(
