@@ -46,7 +46,7 @@ async fn success() {
 
     let sender_data = SenderAccount::new(reward_manager, eth_address, operator);
     program_test.add_account(
-        pair.derive.address,
+        pair.derived.address,
         Account {
             lamports: 9000,
             data: sender_data.try_to_vec().unwrap(),
@@ -75,7 +75,7 @@ async fn success() {
 
     let account = context
         .banks_client
-        .get_account(pair.derive.address)
+        .get_account(pair.derived.address)
         .await
         .unwrap();
     assert!(account.is_none());

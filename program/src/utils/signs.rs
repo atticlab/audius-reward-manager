@@ -67,7 +67,7 @@ pub fn get_eth_addresses<'a>(
             ]
             .concat(),
         )?;
-        if generated_sender_key.derive.address != *signer.key {
+        if generated_sender_key.derived.address != *signer.key {
             return Err(ProgramError::InvalidSeeds);
         }
         if senders_eth_addresses.contains(&signer_data.eth_address) {

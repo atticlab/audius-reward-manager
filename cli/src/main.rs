@@ -135,7 +135,7 @@ fn command_create_sender(
     )?;
     println!(
         "New sender account created: {:?}",
-        new_sender_key.derive.address
+        new_sender_key.derived.address
     );
 
     let transaction = CustomTransaction {
@@ -223,7 +223,7 @@ fn command_add_sender(
 
     println!(
         "New sender account was created: {:?}",
-        new_sender_solana_key.derive.address
+        new_sender_solana_key.derived.address
     );
 
     let transaction = CustomTransaction {

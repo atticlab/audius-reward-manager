@@ -94,7 +94,7 @@ async fn success() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for item in keys.iter().enumerate() {

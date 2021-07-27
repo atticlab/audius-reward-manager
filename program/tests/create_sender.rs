@@ -65,7 +65,7 @@ async fn success() {
         SenderAccount::new(reward_manager, eth_address, operator),
         context
             .banks_client
-            .get_account_data_with_borsh(pair.derive.address)
+            .get_account_data_with_borsh(pair.derived.address)
             .await
             .unwrap()
     );

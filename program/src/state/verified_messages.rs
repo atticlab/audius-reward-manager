@@ -61,6 +61,7 @@ impl Pack for VerifiedMessages {
 
     fn pack_into_slice(&self, dst: &mut [u8]) {
         let output = array_mut_ref![dst, 0, VERIFIED_MESSAGES_LEN];
+        #[allow(clippy::ptr_offset_with_cast)]
         let (version, reward_manager, messages_len, data_flat) =
             mut_array_refs![output, 1, PUBKEY_BYTES, 1, VERIFIED_MESSAGE_LEN * 5];
 
@@ -83,6 +84,7 @@ impl Pack for VerifiedMessages {
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
         let input = array_ref![src, 0, VERIFIED_MESSAGES_LEN];
+        #[allow(clippy::ptr_offset_with_cast)]
         let (version, reward_manager, messages_len, data_flat) =
             array_refs![input, 1, PUBKEY_BYTES, 1, VERIFIED_MESSAGE_LEN * 5];
 

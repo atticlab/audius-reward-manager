@@ -123,7 +123,7 @@ async fn fail_already_initialized() {
         reward_manager,
         Account {
             lamports: 9000,
-            data: data,
+            data,
             owner: audius_reward_manager::id(),
             executable: false,
             rent_epoch: 0,

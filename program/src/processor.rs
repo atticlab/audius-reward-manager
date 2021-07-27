@@ -14,12 +14,11 @@ use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
-    program::{invoke, invoke_signed},
+    program::invoke,
     program_error::ProgramError,
     program_pack::{IsInitialized, Pack},
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction,
     sysvar::Sysvar,
 };
 
@@ -119,29 +118,27 @@ impl Processor {
             reward_manager_info.key,
             [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
         )?;
-        if *sender_info.key != pair.derive.address {
+        if *sender_info.key != pair.derived.address {
             return Err(AudiusProgramError::IncorectSenderAccount.into());
         }
 
-        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
+        assert_account_key(authority_info, &pair.base.address)?;
+        assert_account_key(sender_info, &pair.derived.address)?;
+
+        let signers_seeds = &[
+            &pair.base.address.to_bytes()[..32],
+            &pair.derived.seed.as_slice(),
+            &[pair.derived.bump_seed],
+        ];
 
         let rent = Rent::from_account_info(rent_info)?;
-        invoke_signed(
-            &system_instruction::create_account_with_seed(
-                funder_account_info.key,
-                sender_info.key,
-                &pair.base.address,
-                pair.derive.seed.as_str(),
-                rent.minimum_balance(SenderAccount::LEN),
-                SenderAccount::LEN as _,
-                program_id,
-            ),
-            &[
-                funder_account_info.clone(),
-                sender_info.clone(),
-                authority_info.clone(),
-            ],
-            &[signature],
+        create_account(
+            program_id,
+            funder_account_info.clone(),
+            sender_info.clone(),
+            SenderAccount::LEN,
+            &[signers_seeds],
+            &rent,
         )?;
 
         SenderAccount::new(*reward_manager_info.key, eth_address, operator)
@@ -213,25 +210,23 @@ impl Processor {
             [SENDER_SEED_PREFIX.as_ref(), eth_address.as_ref()].concat(),
         )?;
 
-        let signature = &[&reward_manager_info.key.to_bytes()[..32], &[pair.base.seed]];
+        assert_account_key(authority_info, &pair.base.address)?;
+        assert_account_key(new_sender_info, &pair.derived.address)?;
+
+        let signers_seeds = &[
+            &pair.base.address.to_bytes()[..32],
+            &pair.derived.seed.as_slice(),
+            &[pair.derived.bump_seed],
+        ];
 
         let rent = Rent::from_account_info(rent_info)?;
-        invoke_signed(
-            &system_instruction::create_account_with_seed(
-                funder_info.key,
-                &pair.derive.address,
-                &pair.base.address,
-                pair.derive.seed.as_str(),
-                rent.minimum_balance(SenderAccount::LEN),
-                SenderAccount::LEN as _,
-                program_id,
-            ),
-            &[
-                funder_info.clone(),
-                new_sender_info.clone(),
-                authority_info.clone(),
-            ],
-            &[signature],
+        create_account(
+            program_id,
+            funder_info.clone(),
+            new_sender_info.clone(),
+            SenderAccount::LEN,
+            &[signers_seeds],
+            &rent,
         )?;
 
         SenderAccount::new(*reward_manager_info.key, eth_address, operator)

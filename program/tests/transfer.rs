@@ -98,7 +98,7 @@ async fn transfer_test() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for item in keys.iter().enumerate() {
@@ -177,7 +177,7 @@ async fn transfer_test() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,
+            &oracle.derived.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::TransferArgs {
@@ -209,7 +209,7 @@ async fn transfer_test() {
     )
     .unwrap();
 
-    let transfer_acc_data = get_account(&mut context, &transfer_acc_created.derive.address)
+    let transfer_acc_data = get_account(&mut context, &transfer_acc_created.derived.address)
         .await
         .unwrap();
 
@@ -342,9 +342,9 @@ async fn secp_missing() {
                 &reward_manager.pubkey(),
                 &recipient_sol_key.derive.address,
                 &token_account.pubkey(),
-                &second_sender.derive.address,
+                &second_sender.derived.address,
                 &context.payer.pubkey(),
-                vec![first_sender.derive.address],
+                vec![first_sender.derived.address],
                 instruction::TransferArgs {
                     amount: tokens_amount,
                     id: String::from(transfer_id),
@@ -447,7 +447,7 @@ async fn different_oracles_mentiones() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for item in keys.iter().enumerate() {
@@ -542,7 +542,7 @@ async fn different_oracles_mentiones() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,
+            &oracle.derived.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::TransferArgs {
@@ -699,9 +699,9 @@ async fn oracle_sign_missing() {
                 &reward_manager.pubkey(),
                 &recipient_sol_key.derive.address,
                 &token_account.pubkey(),
-                &second_sender.derive.address,
+                &second_sender.derived.address,
                 &context.payer.pubkey(),
-                vec![first_sender.derive.address],
+                vec![first_sender.derived.address],
                 instruction::TransferArgs {
                     amount: tokens_amount,
                     id: String::from(transfer_id),
@@ -803,7 +803,7 @@ async fn repeating_operators() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for key in &keys {
@@ -882,7 +882,7 @@ async fn repeating_operators() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,
+            &oracle.derived.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::TransferArgs {
@@ -989,7 +989,7 @@ async fn repeating_ids() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for item in keys.iter().enumerate() {
@@ -1068,7 +1068,7 @@ async fn repeating_ids() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,
+            &oracle.derived.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::TransferArgs {
@@ -1190,7 +1190,7 @@ async fn fail_different_amounts_in_sender_messages() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for item in keys.iter().enumerate() {
@@ -1269,7 +1269,7 @@ async fn fail_different_amounts_in_sender_messages() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,
+            &oracle.derived.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::TransferArgs {
@@ -1368,7 +1368,7 @@ async fn fail_different_amount_in_oracle_message() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for item in keys.iter().enumerate() {
@@ -1447,7 +1447,7 @@ async fn fail_different_amount_in_oracle_message() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,
+            &oracle.derived.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::TransferArgs {
@@ -1553,7 +1553,7 @@ async fn fail_different_bot_oracle_in_sender_messages() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for item in keys.iter().enumerate() {
@@ -1632,7 +1632,7 @@ async fn fail_different_bot_oracle_in_sender_messages() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,
+            &oracle.derived.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::TransferArgs {
@@ -1738,7 +1738,7 @@ async fn fail_bot_oracle_is_one_of_the_senders() {
         )
         .unwrap();
 
-        signers[item.0] = pair.derive.address;
+        signers[item.0] = pair.derived.address;
     }
 
     for item in keys.iter().enumerate() {
@@ -1817,7 +1817,7 @@ async fn fail_bot_oracle_is_one_of_the_senders() {
             &reward_manager.pubkey(),
             &recipient_sol_key.derive.address,
             &token_account.pubkey(),
-            &oracle.derive.address,
+            &oracle.derived.address,
             &context.payer.pubkey(),
             std::array::IntoIter::new(signers),
             instruction::TransferArgs {
