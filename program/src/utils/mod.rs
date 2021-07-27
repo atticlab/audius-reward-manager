@@ -2,6 +2,7 @@
 use crate::{
     error::AudiusProgramError,
     state::{VerifiedMessage, TOTAL_VERIFIED_MESSAGES},
+    vote_message,
 };
 use solana_program::{
     account_info::AccountInfo,
@@ -68,17 +69,6 @@ pub fn assert_unique_senders(messages: &[VerifiedMessage]) -> ProgramResult {
     Ok(())
 }
 
-/// Assert zero slice
-pub fn assert_slice_zero(slice: &[u8]) -> bool {
-    for b in slice {
-        if *b != 0u8 {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 /// Assert messages
 pub fn assert_messages(
     valid_message: &[u8],
@@ -93,16 +83,12 @@ pub fn assert_messages(
     } in messages
     {
         if address == bot_oracle_address {
-            if valid_bot_oracle_message != &message[..valid_bot_oracle_message.len()]
-                || !assert_slice_zero(&message[valid_bot_oracle_message.len()..])
-            {
+            if vote_message!(valid_bot_oracle_message) != *message {
                 return Err(AudiusProgramError::IncorrectMessages.into());
-            } else {
-                oracle_signed = true;
             }
-        } else if valid_message != &message[..valid_message.len()]
-            || !assert_slice_zero(&message[valid_message.len()..])
-        {
+
+            oracle_signed = true;
+        } else if vote_message!(valid_message) != *message {
             return Err(AudiusProgramError::IncorrectMessages.into());
         }
     }

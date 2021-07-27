@@ -5,8 +5,9 @@ mod utils;
 use audius_reward_manager::{
     instruction,
     processor::SENDER_SEED_PREFIX,
-    state::{VerifiedMessages, VoteMessage},
+    state::VerifiedMessages,
     utils::{find_derived_pair, EthereumAddress},
+    vote_message,
 };
 use rand::{thread_rng, Rng};
 use secp256k1::{PublicKey, SecretKey};
@@ -65,7 +66,7 @@ async fn success() {
     let recipient_eth_key = [7u8; 20];
     let transfer_id = "4r4t23df32543f55";
 
-    let senders_message_vec = [
+    let senders_message = vote_message!([
         recipient_eth_key.as_ref(),
         b"_",
         tokens_amount.to_le_bytes().as_ref(),
@@ -74,9 +75,7 @@ async fn success() {
         b"_",
         eth_oracle_address.as_ref(),
     ]
-    .concat();
-    let mut senders_message: VoteMessage = [0; 128];
-    senders_message[..senders_message_vec.len()].copy_from_slice(&senders_message_vec);
+    .concat());
 
     // Generate data and create senders
     let keys: [[u8; 32]; 3] = rng.gen();

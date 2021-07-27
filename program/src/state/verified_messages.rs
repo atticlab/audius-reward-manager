@@ -12,6 +12,16 @@ use std::convert::TryFrom;
 /// Vote message
 pub type VoteMessage = [u8; 128];
 
+/// Generates fixed vote message from slice
+#[macro_export]
+macro_rules! vote_message {
+    ($message:expr) => {{
+        let mut new_message = [0; 128];
+        new_message[..$message.len()].copy_from_slice(&$message);
+        new_message
+    }};
+}
+
 /// Verified message with operator
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
 pub struct VerifiedMessage {
