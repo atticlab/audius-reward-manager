@@ -80,6 +80,8 @@ pub fn assert_messages(
     bot_oracle_address: &EthereumAddress,
     messages: &[VerifiedMessage],
 ) -> ProgramResult {
+    let mut oracle_signed = false;
+
     for VerifiedMessage {
         message, address, ..
     } in messages
@@ -89,12 +91,18 @@ pub fn assert_messages(
                 || !assert_slice_zero(&message[valid_bot_oracle_message.len()..])
             {
                 return Err(AudiusProgramError::IncorrectMessages.into());
+            } else {
+                oracle_signed = true;
             }
         } else if valid_message != &message[..valid_message.len()]
             || !assert_slice_zero(&message[valid_message.len()..])
         {
             return Err(AudiusProgramError::IncorrectMessages.into());
         }
+    }
+
+    if !oracle_signed {
+        return Err(AudiusProgramError::NotEnoughSigners.into());
     }
 
     Ok(())
