@@ -97,10 +97,8 @@ pub enum Instructions {
     ///   0. `[writable]` New or existing account storing verified messages
     ///   1. `[]` Reward manager
     ///   2. `[]` Sender
-    ///   3. `[signer]` Funder. Account which pay for new account creation
-    ///   4. `[writable]` Transfer account to create
-    ///   5. `[]` Sysvar instruction id
-    ///   7. `[]` System program
+    ///   3. `[writable]` Transfer account to create
+    ///   4. `[]` Sysvar instruction id
     VerifyTransferSignature,
 
     ///   Transfer tokens to pointed receiver
@@ -270,7 +268,6 @@ pub fn verify_transfer_signature(
     verified_messages: &Pubkey,
     reward_manager: &Pubkey,
     sender: &Pubkey,
-    funder: &Pubkey,
 ) -> Result<Instruction, ProgramError> {
     let data = Instructions::VerifyTransferSignature.try_to_vec()?;
 
@@ -278,9 +275,7 @@ pub fn verify_transfer_signature(
         AccountMeta::new(*verified_messages, false),
         AccountMeta::new_readonly(*reward_manager, false),
         AccountMeta::new_readonly(*sender, false),
-        AccountMeta::new(*funder, true),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
-        AccountMeta::new_readonly(system_program::id(), false),
     ];
 
     Ok(Instruction {

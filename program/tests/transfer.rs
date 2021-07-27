@@ -184,7 +184,6 @@ async fn success() {
                 &verified_messages.pubkey(),
                 &reward_manager.pubkey(),
                 &signers[item.0],
-                &context.payer.pubkey(),
             )
             .unwrap(),
         );

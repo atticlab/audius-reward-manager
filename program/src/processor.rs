@@ -223,13 +223,8 @@ impl Processor {
         verified_messages_info: &AccountInfo<'a>,
         reward_manager_info: &AccountInfo<'a>,
         sender_info: &AccountInfo<'a>,
-        funder_info: &AccountInfo<'a>,
         instruction_info: &AccountInfo<'a>,
     ) -> ProgramResult {
-        if !funder_info.is_signer {
-            return Err(ProgramError::MissingRequiredSignature);
-        }
-
         assert_owned_by(verified_messages_info, program_id)?;
         assert_owned_by(reward_manager_info, program_id)?;
         assert_owned_by(sender_info, program_id)?;
@@ -483,16 +478,13 @@ impl Processor {
                 let verified_messages = next_account_info(account_info_iter)?;
                 let reward_manager = next_account_info(account_info_iter)?;
                 let sender = next_account_info(account_info_iter)?;
-                let funder = next_account_info(account_info_iter)?;
                 let instructions_info = next_account_info(account_info_iter)?;
-                let _system_program = next_account_info(account_info_iter)?;
 
                 Self::process_verify_transfer_signature(
                     program_id,
                     verified_messages,
                     reward_manager,
                     sender,
-                    funder,
                     instructions_info,
                 )
             }
@@ -511,7 +503,7 @@ impl Processor {
                 let transfer_account_info = next_account_info(account_info_iter)?;
                 let bot_oracle_info = next_account_info(account_info_iter)?;
                 let payer_info = next_account_info(account_info_iter)?;
-                let _sysvar_rent = next_account_info(account_info_iter)?;
+                let rent_info = next_account_info(account_info_iter)?;
                 let _token_program_id = next_account_info(account_info_iter)?;
                 let _system_program_id = next_account_info(account_info_iter)?;
 
@@ -525,7 +517,7 @@ impl Processor {
                     transfer_account_info,
                     bot_oracle_info,
                     payer_info,
-                    _sysvar_rent,
+                    rent_info,
                     TransferArgs {
                         amount,
                         id,
