@@ -110,7 +110,7 @@ dependencies = [
  "audius-reward-manager",
  "bincode",
  "borsh 0.8.2",
- "claimable-tokens",
+ "claimable-tokens 0.1.0",
  "clap",
  "csv",
  "hex",
@@ -137,7 +137,7 @@ dependencies = [
  "bincode",
  "borsh 0.9.0",
  "bs58 0.4.0",
- "claimable-tokens",
+ "claimable-tokens 0.1.0 (git+https://github.com/atticwip/claimable-tokens/)",
  "libsecp256k1",
  "num-derive",
  "num-traits",
@@ -496,6 +496,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2eddc119501d583fd930cb92144e605f44e0252c38dd89d9247fffa1993375cb"
 dependencies = [
  "chrono",
+]
+
+[[package]]
+name = "claimable-tokens"
+version = "0.1.0"
+dependencies = [
+ "borsh 0.9.0",
+ "bs58 0.4.0",
+ "num-derive",
+ "num-traits",
+ "num_enum",
+ "solana-program",
+ "spl-token 3.1.1 (git+https://github.com/solana-labs/solana-program-library)",
+ "thiserror",
 ]
 
 [[package]]

@@ -1,21 +1,23 @@
 mod utils;
+use claimable_tokens::utils::program::get_address_pair;
 use clap::{
     crate_description, crate_name, crate_version, value_t, value_t_or_exit, App, AppSettings, Arg,
     SubCommand,
 };
 
 use audius_reward_manager::{
-    instruction::{add_sender, create_sender, delete_sender, init, transfer, Transfer},
+    instruction::{
+        add_sender, create_sender, delete_sender, init, transfer, verify_transfer_signature,
+    },
     processor::SENDER_SEED_PREFIX,
-    state::{RewardManager, SenderAccount},
-    utils::get_address_pair,
+    state::{RewardManager, SenderAccount, VerifiedMessages},
+    utils::find_derived_pair,
 };
-use borsh::BorshDeserialize;
-use claimable_tokens::utils::program::get_address_pair as get_claimable_address;
+
 use hex::FromHex;
 use solana_clap_utils::{
-    input_parsers::pubkey_of,
-    input_validators::{is_keypair, is_parsable, is_pubkey, is_url},
+    input_parsers::{keypair_of, pubkey_of},
+    input_validators::{is_keypair, is_keypair_or_ask_keyword, is_parsable, is_pubkey, is_url},
     keypair::signer_from_path,
 };
 use solana_client::rpc_client::RpcClient;
@@ -51,23 +53,28 @@ type CommandResult = Result<Option<Transaction>, Error>;
 const HEX_ETH_ADDRESS_DECODING_ERROR: &str = "Ethereum address decoding failed";
 const HEX_ETH_SECRET_DECODING_ERROR: &str = "Ethereum secret decoding failed";
 
-fn command_init(config: &Config, token_mint: Pubkey, min_votes: u8) -> CommandResult {
+fn command_init(
+    config: &Config,
+    reward_manager_keypair: Option<Keypair>,
+    token_mint: Pubkey,
+    min_votes: u8,
+) -> CommandResult {
     let mut instructions: Vec<Instruction> = Vec::new();
 
-    let reward_manager_acc = Keypair::new();
+    let reward_manager_keypair = reward_manager_keypair.unwrap_or_else(Keypair::new);
     println!(
         "Reward manager key created: {:?}",
-        reward_manager_acc.pubkey()
+        reward_manager_keypair.pubkey()
     );
 
-    let reward_manager_acc_balance = config
+    let reward_manager_balance = config
         .rpc_client
         .get_minimum_balance_for_rent_exemption(RewardManager::LEN)?;
 
     instructions.push(system_instruction::create_account(
         &config.fee_payer.pubkey(),
-        &reward_manager_acc.pubkey(),
-        reward_manager_acc_balance,
+        &reward_manager_keypair.pubkey(),
+        reward_manager_balance,
         RewardManager::LEN as u64,
         &audius_reward_manager::id(),
     ));
@@ -92,7 +99,7 @@ fn command_init(config: &Config, token_mint: Pubkey, min_votes: u8) -> CommandRe
 
     instructions.push(init(
         &audius_reward_manager::id(),
-        &reward_manager_acc.pubkey(),
+        &reward_manager_keypair.pubkey(),
         &reward_manager_token_acc.pubkey(),
         &token_mint,
         &config.owner.pubkey(),
@@ -100,43 +107,42 @@ fn command_init(config: &Config, token_mint: Pubkey, min_votes: u8) -> CommandRe
     )?);
 
     let transaction = CustomTransaction {
-        instructions: instructions.clone(),
+        instructions,
         signers: vec![
             config.fee_payer.as_ref(),
             config.owner.as_ref(),
-            &reward_manager_acc,
+            &reward_manager_keypair,
             &reward_manager_token_acc,
         ],
     };
 
-    transaction.sign(config, reward_manager_acc_balance + token_acc_balance)
+    transaction.sign(config, reward_manager_balance + token_acc_balance)
 }
 
 fn command_create_sender(
     config: &Config,
     reward_manager: Pubkey,
-    eth_sender_address: String,
-    eth_operator_address: String,
+    sender_eth_address: String,
+    operator_eth_address: String,
 ) -> CommandResult {
     let decoded_eth_sender_address =
-        <[u8; 20]>::from_hex(eth_sender_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
+        <[u8; 20]>::from_hex(sender_eth_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
 
     let decoded_eth_operator_address =
-        <[u8; 20]>::from_hex(eth_operator_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
+        <[u8; 20]>::from_hex(operator_eth_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
 
-    let new_sender_key = get_address_pair(
+    let (_, derived_address, _) = find_derived_pair(
         &audius_reward_manager::id(),
         &reward_manager,
         [
             SENDER_SEED_PREFIX.as_ref(),
             decoded_eth_sender_address.as_ref(),
         ]
-        .concat(),
-    )?;
-    println!(
-        "New sender account created: {:?}",
-        new_sender_key.derived.address
+        .concat()
+        .as_ref(),
     );
+
+    println!("New sender account created: {:?}", derived_address);
 
     let transaction = CustomTransaction {
         instructions: vec![create_sender(
@@ -215,16 +221,15 @@ fn command_add_sender(
         &senders,
     )?);
 
-    let new_sender_solana_key = get_address_pair(
+    let (_, derived_address, _) = find_derived_pair(
         &audius_reward_manager::id(),
         &reward_manager,
-        [SENDER_SEED_PREFIX.as_ref(), new_sender.as_ref()].concat(),
-    )?;
-
-    println!(
-        "New sender account was created: {:?}",
-        new_sender_solana_key.derived.address
+        [SENDER_SEED_PREFIX.as_ref(), new_sender.as_ref()]
+            .concat()
+            .as_ref(),
     );
+
+    println!("New sender account was created: {:?}", derived_address);
 
     let transaction = CustomTransaction {
         instructions,
@@ -234,47 +239,132 @@ fn command_add_sender(
     transaction.sign(config, 0)
 }
 
-fn command_transfer(
+#[allow(clippy::too_many_arguments)]
+fn command_verify_transfer_signature(
     config: &Config,
-    reward_manager: Pubkey,
-    bot_oracle: Pubkey,
-    bot_oracle_secret: String,
-    senders_secrets: String,
+    reward_manager_pubkey: Pubkey,
+    verified_messages_keypair: Option<Keypair>,
+    exact_verified_messages_pubkey: Option<Pubkey>,
+    signer_pubkey: Pubkey,
+    signer_secret: String,
     transfer_id: String,
-    eth_address_recipient: String,
+    recipient_eth_address: String,
     amount: u64,
+    bot_oracle_pubkey: Option<Pubkey>,
 ) -> CommandResult {
-    let reward_manager_data = config.rpc_client.get_account_data(&reward_manager)?;
-    let reward_manager_data = RewardManager::try_from_slice(reward_manager_data.as_slice())?;
+    let verified_messages_keypair = verified_messages_keypair.unwrap_or_else(Keypair::new);
+    let verified_messages_pubkey =
+        exact_verified_messages_pubkey.unwrap_or_else(|| verified_messages_keypair.pubkey());
 
-    let bot_oracle_data = config.rpc_client.get_account_data(&bot_oracle)?;
-    let bot_oracle_data = SenderAccount::try_from_slice(bot_oracle_data.as_slice())?;
+    println!("Verified messages {}", verified_messages_pubkey);
 
     let decoded_recipient_address =
-        <[u8; 20]>::from_hex(eth_address_recipient).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
+        <[u8; 20]>::from_hex(recipient_eth_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
+
+    let message = if let Some(bot_oracle_pubkey) = bot_oracle_pubkey {
+        let bot_oracle_account = config.rpc_client.get_account_data(&bot_oracle_pubkey)?;
+        let bot_oracle = SenderAccount::unpack(bot_oracle_account.as_slice())?;
+
+        // Sender message
+        [
+            decoded_recipient_address.as_ref(),
+            b"_".as_ref(),
+            amount.to_le_bytes().as_ref(),
+            b"_".as_ref(),
+            &transfer_id.as_bytes(),
+            b"_".as_ref(),
+            bot_oracle.eth_address.as_ref(),
+        ]
+        .concat()
+    } else {
+        // Bot oracle message
+        [
+            decoded_recipient_address.as_ref(),
+            b"_".as_ref(),
+            amount.to_le_bytes().as_ref(),
+            b"_".as_ref(),
+            &transfer_id.as_bytes(),
+        ]
+        .concat()
+    };
+
+    let mut instructions = Vec::new();
+    let verified_messages_balance = config
+        .rpc_client
+        .get_minimum_balance_for_rent_exemption(VerifiedMessages::LEN)?;
+    let mut signers = vec![config.fee_payer.as_ref(), config.owner.as_ref()];
+
+    if exact_verified_messages_pubkey.is_none() {
+        instructions.push(system_instruction::create_account(
+            &config.fee_payer.pubkey(),
+            &verified_messages_pubkey,
+            verified_messages_balance,
+            VerifiedMessages::LEN as u64,
+            &audius_reward_manager::id(),
+        ));
+        signers.push(&verified_messages_keypair);
+    }
+
+    let decoded_secret = <[u8; 32]>::from_hex(signer_secret).expect(HEX_ETH_SECRET_DECODING_ERROR);
+    instructions.push(new_secp256k1_instruction_2_0(
+        &secp256k1::SecretKey::parse(&decoded_secret)?,
+        message.as_ref(),
+        instructions.len() as u8,
+    ));
+
+    instructions.push(verify_transfer_signature(
+        &audius_reward_manager::id(),
+        &verified_messages_pubkey,
+        &reward_manager_pubkey,
+        &signer_pubkey,
+    )?);
+
+    let transaction = CustomTransaction {
+        instructions,
+        signers,
+    };
+
+    transaction.sign(config, 0)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn command_transfer(
+    config: &Config,
+    reward_manager_pubkey: Pubkey,
+    verified_messages_pubkey: Pubkey,
+    bot_oracle_pubkey: Pubkey,
+    transfer_id: String,
+    recipient_eth_address: String,
+    amount: u64,
+) -> CommandResult {
+    let reward_manager = config.rpc_client.get_account_data(&reward_manager_pubkey)?;
+    let reward_manager = RewardManager::unpack(reward_manager.as_slice())?;
+
+    let decoded_recipient_address =
+        <[u8; 20]>::from_hex(recipient_eth_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
 
     let mut instructions = Vec::new();
 
-    let vault_acc_data = config
+    let token_account = config
         .rpc_client
-        .get_account_data(&reward_manager_data.token_account)?;
-    let vault_acc_data = Account::unpack(vault_acc_data.as_slice())?;
+        .get_account_data(&reward_manager.token_account)?;
+    let token_account = Account::unpack(token_account.as_slice())?;
 
-    let claimable_token_acc = get_claimable_address(
+    let claimable_token = get_address_pair(
         &claimable_tokens::id(),
-        &vault_acc_data.mint,
+        &token_account.mint,
         decoded_recipient_address,
     )?;
     // Checking if the derived address of recipient does not exist
     // then we must add instruction to create it
-    let derived_token_acc_data = config
+    let derived_token = config
         .rpc_client
-        .get_account_data(&claimable_token_acc.derive.address);
-    if derived_token_acc_data.is_err() {
+        .get_account_data(&claimable_token.derive.address);
+    if derived_token.is_err() {
         instructions.push(claimable_tokens::instruction::init(
             &claimable_tokens::id(),
             &config.fee_payer.pubkey(),
-            &vault_acc_data.mint,
+            &token_account.mint,
             claimable_tokens::instruction::CreateTokenAccount {
                 eth_address: decoded_recipient_address,
             },
@@ -282,70 +372,21 @@ fn command_transfer(
 
         println!(
             "Create new derived token account for recipient: {:?}",
-            claimable_token_acc.derive.address
+            claimable_token.derive.address
         );
     }
 
-    let sender_message = [
-        decoded_recipient_address.as_ref(),
-        b"_".as_ref(),
-        amount.to_le_bytes().as_ref(),
-        b"_".as_ref(),
-        &transfer_id.as_bytes(),
-        b"_".as_ref(),
-        bot_oracle_data.eth_address.as_ref(),
-    ]
-    .concat();
-
-    let bot_oracle_message = [
-        decoded_recipient_address.as_ref(),
-        b"_".as_ref(),
-        amount.to_le_bytes().as_ref(),
-        b"_".as_ref(),
-        &transfer_id.as_bytes(),
-    ]
-    .concat();
-
-    let mut senders = Vec::new();
-    let mut secrets = Vec::new();
-
-    println!("Signing message with senders and bot oracle private keys...");
-
-    let mut rdr = csv::Reader::from_path(&senders_secrets)?;
-
-    for key in rdr.deserialize() {
-        let deserialized_sender_data: SenderData = key?;
-        let decoded_secret = <[u8; 32]>::from_hex(deserialized_sender_data.eth_secret)
-            .expect(HEX_ETH_SECRET_DECODING_ERROR);
-
-        senders.push(Pubkey::from_str(&deserialized_sender_data.solana_key)?);
-        secrets.push(secp256k1::SecretKey::parse(&decoded_secret)?);
-    }
-
-    instructions.append(&mut sign_message(sender_message.as_ref(), secrets));
-
-    let bot_oracle_secret =
-        <[u8; 32]>::from_hex(bot_oracle_secret).expect(HEX_ETH_SECRET_DECODING_ERROR);
-
-    instructions.push(new_secp256k1_instruction_2_0(
-        &secp256k1::SecretKey::parse(&bot_oracle_secret)?,
-        bot_oracle_message.as_ref(),
-        instructions.len() as u8,
-    ));
-
     instructions.push(transfer(
         &audius_reward_manager::id(),
-        &reward_manager,
-        &claimable_token_acc.derive.address,
-        &reward_manager_data.token_account,
-        &bot_oracle,
+        &verified_messages_pubkey,
+        &reward_manager_pubkey,
+        &reward_manager.token_account,
+        &claimable_token.derive.address,
+        &bot_oracle_pubkey,
         &config.fee_payer.pubkey(),
-        senders,
-        Transfer {
-            amount,
-            id: transfer_id,
-            eth_recipient: decoded_recipient_address,
-        },
+        amount,
+        transfer_id,
+        decoded_recipient_address,
     )?);
 
     let transaction = CustomTransaction {
@@ -416,6 +457,14 @@ fn main() {
                 ),
         )
         .subcommand(SubCommand::with_name("init").about("Init a new reward manager")
+            .arg(
+                Arg::with_name("reward_manager_keypair")
+                    .long("keypair")
+                    .validator(is_keypair_or_ask_keyword)
+                    .value_name("PATH")
+                    .takes_value(true)
+                    .help("Reward manager keypair [default: new keypair]"),
+            )
             .arg(
                 Arg::with_name("token-mint")
                     .long("token-mint")
@@ -517,9 +566,9 @@ fn main() {
                 .required(true)
                 .help("CSV file with senders Ethereum secret keys"),
             ))
-        .subcommand(SubCommand::with_name("transfer").about("Make transfer")
+        .subcommand(SubCommand::with_name("verify-transfer-signature").about("Verify trasnfer signature")
             .arg(
-                Arg::with_name("reward-manager")
+                Arg::with_name("reward_manager")
                     .long("reward-manager")
                     .validator(is_pubkey)
                     .value_name("ADDRESS")
@@ -528,34 +577,42 @@ fn main() {
                     .help("Reward manager"),
             )
             .arg(
-                Arg::with_name("bot-oracle")
-                    .long("bot-oracle")
+                Arg::with_name("verified_messages_keypair")
+                    .long("keypair")
+                    .validator(is_keypair_or_ask_keyword)
+                    .value_name("PATH")
+                    .takes_value(true)
+                    .help("Verified messages keypair [default: new keypair]"),
+            )
+            .arg(
+                Arg::with_name("verified_messages_pubkey")
+                    .long("pubkey")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .conflicts_with("keypair")
+                    .help("Verified messages"),
+            )
+            .arg(
+                Arg::with_name("address")
+                    .long("address")
                     .validator(is_pubkey)
                     .value_name("ADDRESS")
                     .takes_value(true)
                     .required(true)
-                    .help("Bot oracle"),
+                    .help("Signer address"),
             )
             .arg(
-                Arg::with_name("bot-oracle-secret")
-                    .long("bot-oracle-secret")
+                Arg::with_name("secret")
+                    .long("secret")
                     .validator(is_hex)
                     .value_name("ETH_SECRET")
                     .takes_value(true)
                     .required(true)
-                    .help("Ethereum bot oracle secret key"),
+                    .help("Signer ethereum secret key"),
             )
             .arg(
-                Arg::with_name("senders-secrets")
-                    .long("senders-secrets")
-                    .validator(is_csv_file)
-                    .value_name("PATH")
-                    .takes_value(true)
-                    .required(true)
-                    .help("CSV file with senders Ethereum secret keys"),
-            )
-            .arg(
-                Arg::with_name("transfer-id")
+                Arg::with_name("transfer_id")
                     .long("transfer-id")
                     .validator(is_parsable::<String>)
                     .value_name("STRING")
@@ -564,8 +621,62 @@ fn main() {
                     .help("Transfer ID"),
             )
             .arg(
-                Arg::with_name("eth-address-recipient")
-                    .long("eth-address-recipient")
+                Arg::with_name("recipient_eth_address")
+                    .long("recipient")
+                    .validator(is_eth_address)
+                    .value_name("ETH_ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Recipient ethereum address"),
+            )
+            .arg(
+                Arg::with_name("amount")
+                    .long("amount")
+                    .validator(is_parsable::<f64>)
+                    .value_name("NUMBER")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Amount to transfer"),
+            )
+            .arg(
+                Arg::with_name("bot_oracle")
+                    .long("bot-oracle")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .help("Bot oracle reference (if it doesn't exist - the message will be signed as bot oracle"),
+            ))
+        .subcommand(SubCommand::with_name("transfer").about("Make transfer")
+            .arg(
+                Arg::with_name("reward_manager")
+                    .long("reward-manager")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Reward manager"),
+            )
+            .arg(
+                Arg::with_name("verified_messages")
+                    .long("verified-messages")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Verified messages"),
+            )
+            .arg(
+                Arg::with_name("transfer_id")
+                    .long("transfer-id")
+                    .validator(is_parsable::<String>)
+                    .value_name("STRING")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Transfer ID"),
+            )
+            .arg(
+                Arg::with_name("recipient_eth_address")
+                    .long("recipient")
                     .validator(is_eth_address)
                     .value_name("ETH_ADDRESS")
                     .takes_value(true)
@@ -580,6 +691,15 @@ fn main() {
                     .takes_value(true)
                     .required(true)
                     .help("Amount to transfer"),
+            )
+            .arg(
+                Arg::with_name("bot_oracle")
+                    .long("bot-oracle")
+                    .validator(is_pubkey)
+                    .value_name("ADDRESS")
+                    .takes_value(true)
+                    .required(true)
+                    .help("Bot oracle"),
             ))
         .get_matches();
 
@@ -628,9 +748,10 @@ fn main() {
 
     let _ = match matches.subcommand() {
         ("init", Some(arg_matches)) => {
+            let reward_manager_keypair = keypair_of(arg_matches, "reward_manager_keypair");
             let token_mint: Pubkey = pubkey_of(arg_matches, "token-mint").unwrap();
             let min_votes: u8 = value_t_or_exit!(arg_matches, "min-votes", u8);
-            command_init(&config, token_mint, min_votes)
+            command_init(&config, reward_manager_keypair, token_mint, min_votes)
         }
         ("create-sender", Some(arg_matches)) => {
             let reward_manager: Pubkey = pubkey_of(arg_matches, "reward-manager").unwrap();
@@ -669,26 +790,49 @@ fn main() {
                 senders_secrets,
             )
         }
-        ("transfer", Some(arg_matches)) => {
-            let reward_manager: Pubkey = pubkey_of(arg_matches, "reward-manager").unwrap();
-            let bot_oracle: Pubkey = pubkey_of(arg_matches, "bot-oracle").unwrap();
-            let bot_oracle_secret: String =
-                value_t_or_exit!(arg_matches, "bot-oracle-secret", String);
-            let senders_secrets: String = value_t_or_exit!(arg_matches, "senders-secrets", String);
-            let transfer_id: String = value_t_or_exit!(arg_matches, "transfer-id", String);
-            let eth_address_recipient: String =
-                value_t_or_exit!(arg_matches, "eth-address-recipient", String);
+        ("verify-transfer-signature", Some(arg_matches)) => {
+            let reward_manager: Pubkey = pubkey_of(arg_matches, "reward_manager").unwrap();
+            let verified_messages_keypair = keypair_of(arg_matches, "verified_messages_keypair");
+            let verified_messages_pubkey = pubkey_of(arg_matches, "verified_messages_pubkey");
+            let signer_pubkey: Pubkey = pubkey_of(arg_matches, "address").unwrap();
+            let signer_secret: String = value_t_or_exit!(arg_matches, "secret", String);
+            let transfer_id: String = value_t_or_exit!(arg_matches, "transfer_id", String);
+            let recipient_eth_address: String =
+                value_t_or_exit!(arg_matches, "recipient_eth_address", String);
             let amount: f64 = value_t_or_exit!(arg_matches, "amount", f64);
             let amount = ui_amount_to_amount(amount, spl_token::native_mint::DECIMALS);
+            let bot_oracle_pubkey = pubkey_of(arg_matches, "bot_oracle");
+
+            command_verify_transfer_signature(
+                &config,
+                reward_manager,
+                verified_messages_keypair,
+                verified_messages_pubkey,
+                signer_pubkey,
+                signer_secret,
+                transfer_id,
+                String::from(recipient_eth_address.get(2..).unwrap()),
+                amount,
+                bot_oracle_pubkey,
+            )
+        }
+        ("transfer", Some(arg_matches)) => {
+            let reward_manager: Pubkey = pubkey_of(arg_matches, "reward_manager").unwrap();
+            let verified_messages = pubkey_of(arg_matches, "verified_messages").unwrap();
+            let transfer_id: String = value_t_or_exit!(arg_matches, "transfer_id", String);
+            let recipient_eth_address: String =
+                value_t_or_exit!(arg_matches, "recipient_eth_address", String);
+            let amount: f64 = value_t_or_exit!(arg_matches, "amount", f64);
+            let amount = ui_amount_to_amount(amount, spl_token::native_mint::DECIMALS);
+            let bot_oracle: Pubkey = pubkey_of(arg_matches, "bot_oracle").unwrap();
 
             command_transfer(
                 &config,
                 reward_manager,
+                verified_messages,
                 bot_oracle,
-                bot_oracle_secret,
-                senders_secrets,
                 transfer_id,
-                String::from(eth_address_recipient.get(2..).unwrap()),
+                String::from(recipient_eth_address.get(2..).unwrap()),
                 amount,
             )
         }
