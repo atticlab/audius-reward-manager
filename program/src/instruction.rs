@@ -313,7 +313,6 @@ pub fn verify_transfer_signature(
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];
-    println!("{:?}", accounts);
 
     Ok(Instruction {
         program_id: *program_id,

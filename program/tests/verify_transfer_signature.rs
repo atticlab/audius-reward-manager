@@ -122,9 +122,6 @@ async fn success() {
     .unwrap();
 
     let mut instructions = Vec::<Instruction>::new();
-
-    let verified_messages = Keypair::new();
-
     let priv_key = SecretKey::parse(&keys[0]).unwrap();
     let sender_sign = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), 0);
     instructions.push(sender_sign);
@@ -140,7 +137,7 @@ async fn success() {
         .unwrap(),
     );
 
-    println!("Signing verify instruction");
+    println!("Signing verify instruction 1");
     let tx = Transaction::new_signed_with_payer(
         &instructions,
         Some(&context.payer.pubkey()),
@@ -148,7 +145,33 @@ async fn success() {
         context.last_blockhash,
     );
 
-    println!("Submitting verify instruction");
+    println!("Submitting verify instruction 2");
     context.banks_client.process_transaction(tx).await.unwrap();
 
+    let mut instructions_2 = Vec::<Instruction>::new();
+    let priv_key_2 = SecretKey::parse(&keys[1]).unwrap();
+    let sender_sign_2 = new_secp256k1_instruction_2_0(&priv_key_2, senders_message.as_ref(), 0);
+    instructions_2.push(sender_sign_2);
+
+    instructions_2.push(
+        instruction::verify_transfer_signature(
+            &audius_reward_manager::id(),
+            &reward_manager.pubkey(),
+            &signers[1],
+            &context.payer.pubkey(),
+            transfer_id.to_string()
+        )
+        .unwrap(),
+    );
+
+    println!("Signing verify instruction 2");
+    let tx2 = Transaction::new_signed_with_payer(
+        &instructions_2,
+        Some(&context.payer.pubkey()),
+        &[&context.payer],
+        context.last_blockhash,
+    );
+
+    println!("Submitting verify instruction 2");
+    context.banks_client.process_transaction(tx2).await.unwrap();
 }

@@ -229,7 +229,6 @@ impl Processor {
         verify_transfer_data: VerifyTransferSignatureArgs,
     ) -> ProgramResult {
         // TODO: 
-        // assert_owned_by(verified_messages_info, program_id)?;
         assert_owned_by(reward_manager_info, program_id)?;
         assert_owned_by(sender_info, program_id)?;
 
@@ -255,15 +254,19 @@ impl Processor {
             &[bump_seed],
         ];
 
-        let rent = Rent::from_account_info(rent_info)?;
-        create_account(
-            program_id,
-            funder_info.clone(),
-            verified_messages_info.clone(),
-            VerifiedMessages::LEN,
-            &[signers_seeds],
-            &rent,
-        )?;
+        if verified_messages_info.data_len() == 0 && verified_messages_info.lamports() == 0 {
+            let rent = Rent::from_account_info(rent_info)?;
+            create_account(
+                program_id,
+                funder_info.clone(),
+                verified_messages_info.clone(),
+                VerifiedMessages::LEN,
+                &[signers_seeds],
+                &rent,
+            )?;
+        } else {
+            assert_owned_by(verified_messages_info, program_id)?;
+        }
 
         let mut verified_messages =
             VerifiedMessages::unpack_unchecked(&verified_messages_info.data.borrow())?;
