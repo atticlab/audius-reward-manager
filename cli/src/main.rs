@@ -10,8 +10,9 @@ use audius_reward_manager::{
         add_sender, create_sender, delete_sender, init, transfer, verify_transfer_signature,
     },
     processor::SENDER_SEED_PREFIX,
-    state::{RewardManager, SenderAccount, VerifiedMessages},
+    state::{RewardManager, SenderAccount, VerifiedMessages, VerifiedMessage},
     utils::find_derived_pair,
+    error::to_audius_program_error
 };
 
 use hex::FromHex;
@@ -265,6 +266,7 @@ fn command_verify_transfer_signature(
         let bot_oracle_account = config.rpc_client.get_account_data(&bot_oracle_pubkey)?;
         let bot_oracle = SenderAccount::unpack(bot_oracle_account.as_slice())?;
 
+        println!("Signing as normal sender");
         // Sender message
         [
             decoded_recipient_address.as_ref(),
@@ -277,6 +279,7 @@ fn command_verify_transfer_signature(
         ]
         .concat()
     } else {
+        println!("Signing as bot oracle!");
         // Bot oracle message
         [
             decoded_recipient_address.as_ref(),
@@ -339,6 +342,13 @@ fn command_transfer(
 ) -> CommandResult {
     let reward_manager = config.rpc_client.get_account_data(&reward_manager_pubkey)?;
     let reward_manager = RewardManager::unpack(reward_manager.as_slice())?;
+    println!("RewardManager num votes: {:?}", reward_manager.min_votes);
+
+    let verified_messages = config.rpc_client.get_account_data(&verified_messages_pubkey)?;
+    let verified_messages = VerifiedMessages::unpack(verified_messages.as_slice())?;
+    println!("VerifiedMsgs reward_manager: {:?}", verified_messages.reward_manager);
+    println!("VerifiedMsgs number of messages: {:?}", verified_messages.messages.len());
+    println!("VerifiedMsgs : {:?}", verified_messages);
 
     let decoded_recipient_address =
         <[u8; 20]>::from_hex(recipient_eth_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
@@ -586,7 +596,7 @@ fn main() {
             )
             .arg(
                 Arg::with_name("verified_messages_pubkey")
-                    .long("pubkey")
+                    .long("verified-messages-pubkey")
                     .validator(is_pubkey)
                     .value_name("ADDRESS")
                     .takes_value(true)
@@ -851,7 +861,7 @@ fn main() {
         Ok(())
     })
     .map_err(|err| {
-        eprintln!("{}", err);
-        exit(1);
+        eprintln!("{:?}", err);
+        exit(2)
     });
 }

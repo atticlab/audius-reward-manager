@@ -3,7 +3,7 @@
 use crate::{
     error::AudiusProgramError,
     instruction::{
-        AddSenderArgs, CreateSenderArgs, InitRewardManagerArgs, Instructions, TransferArgs,
+        AddSenderArgs, CreateSenderArgs, InitRewardManagerArgs, Instructions, TransferArgs, VerifyTransferSignatureArgs
     },
     state::{RewardManager, SenderAccount, VerifiedMessage, VerifiedMessages},
     utils::*,
@@ -25,6 +25,8 @@ use solana_program::{
 pub const SENDER_SEED_PREFIX: &str = "S_";
 /// Transfer program account seed
 pub const TRANSFER_SEED_PREFIX: &str = "T_";
+/// Verify transfer program account seed
+pub const VERIFY_TRANSFER_SEED_PREFIX: &str = "V_";
 /// Transfer account space
 pub const TRANSFER_ACC_SPACE: usize = 0;
 
@@ -219,15 +221,49 @@ impl Processor {
         program_id: &Pubkey,
         verified_messages_info: &AccountInfo<'a>,
         reward_manager_info: &AccountInfo<'a>,
+        authority_info: &AccountInfo<'a>,
+        funder_info: &AccountInfo<'a>,
+        rent_info: &AccountInfo<'a>,
         sender_info: &AccountInfo<'a>,
         instruction_info: &AccountInfo<'a>,
+        verify_transfer_data: VerifyTransferSignatureArgs,
     ) -> ProgramResult {
+        msg!("process_verify_transfer_signature...");
         assert_owned_by(verified_messages_info, program_id)?;
         assert_owned_by(reward_manager_info, program_id)?;
         assert_owned_by(sender_info, program_id)?;
 
         let sender_account = SenderAccount::unpack(&sender_info.data.borrow())?;
         assert_account_key(reward_manager_info, &sender_account.reward_manager)?;
+
+        // Verify derived address matches expected value
+        let derived_seed = [
+            VERIFY_TRANSFER_SEED_PREFIX.as_bytes().as_ref(),
+            verify_transfer_data.id.as_ref(),
+        ]
+        .concat();
+
+        let (reward_manager_authority, derived_address, bump_seed) =
+        find_derived_pair(program_id, reward_manager_info.key, derived_seed.as_ref());
+
+        assert_account_key(authority_info, &reward_manager_authority)?;
+        assert_account_key(verified_messages_info, &derived_address)?;
+
+        let signers_seeds = &[
+            &reward_manager_authority.to_bytes()[..32],
+            &derived_seed.as_slice(),
+            &[bump_seed],
+        ];
+
+        let rent = Rent::from_account_info(rent_info)?;
+        create_account(
+            program_id,
+            funder_info.clone(),
+            verified_messages_info.clone(),
+            VerifiedMessages::LEN,
+            &[signers_seeds],
+            &rent,
+        )?;
 
         let mut verified_messages =
             VerifiedMessages::unpack_unchecked(&verified_messages_info.data.borrow())?;
@@ -338,6 +374,8 @@ impl Processor {
             &derived_seed.as_slice(),
             &[bump_seed],
         ];
+
+        // TODO: Verify transfer target address
 
         // Create deterministic account on-chain
         create_account(
@@ -467,20 +505,33 @@ impl Processor {
                     operator,
                 )
             }
-            Instructions::VerifyTransferSignature => {
+            Instructions::VerifyTransferSignature(
+                VerifyTransferSignatureArgs {
+                    id
+                }
+            ) => {
                 msg!("Instruction: VerifyTransferSignature");
 
                 let verified_messages = next_account_info(account_info_iter)?;
                 let reward_manager = next_account_info(account_info_iter)?;
+                let authority = next_account_info(account_info_iter)?;
+                let funder_info = next_account_info(account_info_iter)?;
                 let sender = next_account_info(account_info_iter)?;
+                let rent_info = next_account_info(account_info_iter)?;
                 let instructions_info = next_account_info(account_info_iter)?;
 
                 Self::process_verify_transfer_signature(
                     program_id,
                     verified_messages,
                     reward_manager,
+                    authority,
+                    funder_info,
+                    rent_info,
                     sender,
                     instructions_info,
+                    VerifyTransferSignatureArgs {
+                        id
+                    },
                 )
             }
             Instructions::Transfer(TransferArgs {

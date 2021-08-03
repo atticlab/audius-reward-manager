@@ -125,13 +125,13 @@ async fn success() {
 
     let verified_messages = Keypair::new();
 
-    instructions.push(system_instruction::create_account(
-        &context.payer.pubkey(),
-        &verified_messages.pubkey(),
-        rent.minimum_balance(VerifiedMessages::LEN),
-        VerifiedMessages::LEN as u64,
-        &audius_reward_manager::id(),
-    ));
+    // instructions.push(system_instruction::create_account(
+    //     &context.payer.pubkey(),
+    //     &verified_messages.pubkey(),
+    //     rent.minimum_balance(VerifiedMessages::LEN),
+    //     VerifiedMessages::LEN as u64,
+    //     &audius_reward_manager::id(),
+    // ));
 
     let priv_key = SecretKey::parse(&keys[0]).unwrap();
     let sender_sign = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), 1);
@@ -140,19 +140,22 @@ async fn success() {
     instructions.push(
         instruction::verify_transfer_signature(
             &audius_reward_manager::id(),
-            &verified_messages.pubkey(),
             &reward_manager.pubkey(),
             &signers[0],
+            &context.payer.pubkey(),
+            transfer_id.to_string()
         )
         .unwrap(),
     );
 
+    println!("Signing verify instruction");
     let tx = Transaction::new_signed_with_payer(
         &instructions,
         Some(&context.payer.pubkey()),
-        &[&context.payer, &verified_messages],
+        &[&context.payer],
         context.last_blockhash,
     );
 
+    println!("Submitting verify instruction");
     context.banks_client.process_transaction(tx).await.unwrap();
 }

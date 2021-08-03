@@ -1,7 +1,11 @@
 //! Instruction types
 
 use crate::{
-    processor::{SENDER_SEED_PREFIX, TRANSFER_SEED_PREFIX},
+    processor::{
+        SENDER_SEED_PREFIX,
+        TRANSFER_SEED_PREFIX,
+        VERIFY_TRANSFER_SEED_PREFIX
+    },
     utils::{find_derived_pair, find_program_address, EthereumAddress},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -35,6 +39,13 @@ pub struct AddSenderArgs {
     pub eth_address: EthereumAddress,
     /// Sender operator
     pub operator: EthereumAddress,
+}
+
+/// Verify `Transfer` instruction args
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+pub struct VerifyTransferSignatureArgs {
+    /// ID generated on backend
+    pub id: String
 }
 
 /// `Transfer` instruction args
@@ -96,9 +107,12 @@ pub enum Instructions {
     ///
     ///   0. `[writable]` New or existing account storing verified messages
     ///   1. `[]` Reward manager
+    ///   1. `[]` Reward manager authority
+    ///   1. `[signer]` Funder
     ///   2. `[]` Sender
-    ///   3. `[]` Sysvar instruction id
-    VerifyTransferSignature,
+    ///   8. `[]` Sysvar rent
+    ///   2. `[]` Instruction info
+    VerifyTransferSignature(VerifyTransferSignatureArgs),
 
     ///   Transfer tokens to pointed receiver
     ///
@@ -270,18 +284,35 @@ where
 /// Create `VerifyTransferSignature` instruction
 pub fn verify_transfer_signature(
     program_id: &Pubkey,
-    verified_messages: &Pubkey,
     reward_manager: &Pubkey,
     sender: &Pubkey,
+    funder: &Pubkey,
+    id: String
 ) -> Result<Instruction, ProgramError> {
-    let data = Instructions::VerifyTransferSignature.try_to_vec()?;
+    let data = Instructions::VerifyTransferSignature(
+        VerifyTransferSignatureArgs {
+            id: id.clone()
+        }
+    ).try_to_vec()?;
+
+    let (reward_manager_authority, verified_messages, _) = find_derived_pair(
+        program_id,
+        reward_manager,
+        [VERIFY_TRANSFER_SEED_PREFIX.as_bytes().as_ref(), id.as_ref()]
+            .concat()
+            .as_ref(),
+    );
 
     let accounts = vec![
-        AccountMeta::new(*verified_messages, false),
+        AccountMeta::new(verified_messages, false),
         AccountMeta::new_readonly(*reward_manager, false),
+        AccountMeta::new_readonly(reward_manager_authority, false),
+        AccountMeta::new(*funder, true),
         AccountMeta::new_readonly(*sender, false),
+        AccountMeta::new_readonly(sysvar::rent::id(), false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
     ];
+    println!("{:?}", accounts);
 
     Ok(Instruction {
         program_id: *program_id,
