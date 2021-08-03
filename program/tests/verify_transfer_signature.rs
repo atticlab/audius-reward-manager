@@ -125,16 +125,8 @@ async fn success() {
 
     let verified_messages = Keypair::new();
 
-    // instructions.push(system_instruction::create_account(
-    //     &context.payer.pubkey(),
-    //     &verified_messages.pubkey(),
-    //     rent.minimum_balance(VerifiedMessages::LEN),
-    //     VerifiedMessages::LEN as u64,
-    //     &audius_reward_manager::id(),
-    // ));
-
     let priv_key = SecretKey::parse(&keys[0]).unwrap();
-    let sender_sign = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), 1);
+    let sender_sign = new_secp256k1_instruction_2_0(&priv_key, senders_message.as_ref(), 0);
     instructions.push(sender_sign);
 
     instructions.push(
@@ -158,4 +150,5 @@ async fn success() {
 
     println!("Submitting verify instruction");
     context.banks_client.process_transaction(tx).await.unwrap();
+
 }

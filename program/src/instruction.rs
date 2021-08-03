@@ -311,6 +311,7 @@ pub fn verify_transfer_signature(
         AccountMeta::new_readonly(*sender, false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
         AccountMeta::new_readonly(sysvar::instructions::id(), false),
+        AccountMeta::new_readonly(system_program::id(), false),
     ];
     println!("{:?}", accounts);
 

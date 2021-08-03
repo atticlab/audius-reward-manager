@@ -228,8 +228,8 @@ impl Processor {
         instruction_info: &AccountInfo<'a>,
         verify_transfer_data: VerifyTransferSignatureArgs,
     ) -> ProgramResult {
-        msg!("process_verify_transfer_signature...");
-        assert_owned_by(verified_messages_info, program_id)?;
+        // TODO: 
+        // assert_owned_by(verified_messages_info, program_id)?;
         assert_owned_by(reward_manager_info, program_id)?;
         assert_owned_by(sender_info, program_id)?;
 
@@ -519,6 +519,7 @@ impl Processor {
                 let sender = next_account_info(account_info_iter)?;
                 let rent_info = next_account_info(account_info_iter)?;
                 let instructions_info = next_account_info(account_info_iter)?;
+                let _system_program_id = next_account_info(account_info_iter)?;
 
                 Self::process_verify_transfer_signature(
                     program_id,
