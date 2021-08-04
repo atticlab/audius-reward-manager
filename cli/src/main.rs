@@ -10,9 +10,8 @@ use audius_reward_manager::{
         add_sender, create_sender, delete_sender, init, transfer, verify_transfer_signature,
     },
     processor::SENDER_SEED_PREFIX,
-    state::{RewardManager, SenderAccount, VerifiedMessages, VerifiedMessage},
-    utils::find_derived_pair,
-    error::to_audius_program_error
+    state::{RewardManager, SenderAccount, VerifiedMessages},
+    utils::find_derived_pair
 };
 
 use hex::FromHex;
@@ -244,8 +243,8 @@ fn command_add_sender(
 fn command_verify_transfer_signature(
     config: &Config,
     reward_manager_pubkey: Pubkey,
-    verified_messages_keypair: Option<Keypair>,
-    exact_verified_messages_pubkey: Option<Pubkey>,
+    // verified_messages_keypair: Option<Keypair>,
+    // exact_verified_messages_pubkey: Option<Pubkey>,
     signer_pubkey: Pubkey,
     signer_secret: String,
     transfer_id: String,
@@ -253,11 +252,11 @@ fn command_verify_transfer_signature(
     amount: u64,
     bot_oracle_pubkey: Option<Pubkey>,
 ) -> CommandResult {
-    let verified_messages_keypair = verified_messages_keypair.unwrap_or_else(Keypair::new);
-    let verified_messages_pubkey =
-        exact_verified_messages_pubkey.unwrap_or_else(|| verified_messages_keypair.pubkey());
+    // let verified_messages_keypair = verified_messages_keypair.unwrap_or_else(Keypair::new);
+    // let verified_messages_pubkey =
+    //     exact_verified_messages_pubkey.unwrap_or_else(|| verified_messages_keypair.pubkey());
 
-    println!("Verified messages {}", verified_messages_pubkey);
+    // println!("Verified messages {}", verified_messages_pubkey);
 
     let decoded_recipient_address =
         <[u8; 20]>::from_hex(recipient_eth_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
@@ -292,21 +291,20 @@ fn command_verify_transfer_signature(
     };
 
     let mut instructions = Vec::new();
-    let verified_messages_balance = config
-        .rpc_client
-        .get_minimum_balance_for_rent_exemption(VerifiedMessages::LEN)?;
-    let mut signers = vec![config.fee_payer.as_ref(), config.owner.as_ref()];
+    // let verified_messages_balance = config
+    //     .rpc_client
+    //     .get_minimum_balance_for_rent_exemption(VerifiedMessages::LEN)?;
 
-    if exact_verified_messages_pubkey.is_none() {
-        instructions.push(system_instruction::create_account(
-            &config.fee_payer.pubkey(),
-            &verified_messages_pubkey,
-            verified_messages_balance,
-            VerifiedMessages::LEN as u64,
-            &audius_reward_manager::id(),
-        ));
-        signers.push(&verified_messages_keypair);
-    }
+    // if exact_verified_messages_pubkey.is_none() {
+    //     instructions.push(system_instruction::create_account(
+    //         &config.fee_payer.pubkey(),
+    //         &verified_messages_pubkey,
+    //         verified_messages_balance,
+    //         VerifiedMessages::LEN as u64,
+    //         &audius_reward_manager::id(),
+    //     ));
+    //     signers.push(&verified_messages_keypair);
+    // }
 
     let decoded_secret = <[u8; 32]>::from_hex(signer_secret).expect(HEX_ETH_SECRET_DECODING_ERROR);
     instructions.push(new_secp256k1_instruction_2_0(
@@ -315,13 +313,17 @@ fn command_verify_transfer_signature(
         instructions.len() as u8,
     ));
 
-    instructions.push(verify_transfer_signature(
-        &audius_reward_manager::id(),
-        &verified_messages_pubkey,
-        &reward_manager_pubkey,
-        &signer_pubkey,
-    )?);
+    instructions.push(
+        verify_transfer_signature(
+            &audius_reward_manager::id(),
+            &reward_manager_pubkey,
+            &signer_pubkey,
+            &config.fee_payer.pubkey(),
+            transfer_id
+        )
+    ?);
 
+    let signers = vec![config.fee_payer.as_ref(), config.owner.as_ref()];
     let transaction = CustomTransaction {
         instructions,
         signers,
@@ -802,8 +804,8 @@ fn main() {
         }
         ("verify-transfer-signature", Some(arg_matches)) => {
             let reward_manager: Pubkey = pubkey_of(arg_matches, "reward_manager").unwrap();
-            let verified_messages_keypair = keypair_of(arg_matches, "verified_messages_keypair");
-            let verified_messages_pubkey = pubkey_of(arg_matches, "verified_messages_pubkey");
+            // let verified_messages_keypair = keypair_of(arg_matches, "verified_messages_keypair");
+            // let verified_messages_pubkey = pubkey_of(arg_matches, "verified_messages_pubkey");
             let signer_pubkey: Pubkey = pubkey_of(arg_matches, "address").unwrap();
             let signer_secret: String = value_t_or_exit!(arg_matches, "secret", String);
             let transfer_id: String = value_t_or_exit!(arg_matches, "transfer_id", String);
@@ -816,8 +818,8 @@ fn main() {
             command_verify_transfer_signature(
                 &config,
                 reward_manager,
-                verified_messages_keypair,
-                verified_messages_pubkey,
+                // verified_messages_keypair,
+                // verified_messages_pubkey,
                 signer_pubkey,
                 signer_secret,
                 transfer_id,
