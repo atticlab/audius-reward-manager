@@ -105,13 +105,14 @@ pub enum Instructions {
 
     ///   Verify transfer signature
     ///
-    ///   0. `[writable]` New or existing account storing verified messages
+    ///   0. `[writable]` New or existing account PDA storing verified messages
     ///   1. `[]` Reward manager
-    ///   1. `[]` Reward manager authority
-    ///   1. `[signer]` Funder
-    ///   2. `[]` Sender
-    ///   8. `[]` Sysvar rent
-    ///   2. `[]` Instruction info
+    ///   2. `[]` Reward manager authority
+    ///   3. `[signer]` Funder
+    ///   4. `[]` Sender
+    ///   5. `[]` Sysvar rent
+    ///   6. `[]` Instruction info
+    ///   7. `[]` System program id
     VerifyTransferSignature(VerifyTransferSignatureArgs),
 
     ///   Transfer tokens to pointed receiver

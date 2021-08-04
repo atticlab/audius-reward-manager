@@ -228,7 +228,6 @@ impl Processor {
         instruction_info: &AccountInfo<'a>,
         verify_transfer_data: VerifyTransferSignatureArgs,
     ) -> ProgramResult {
-        // TODO: 
         assert_owned_by(reward_manager_info, program_id)?;
         assert_owned_by(sender_info, program_id)?;
 
@@ -377,8 +376,6 @@ impl Processor {
             &derived_seed.as_slice(),
             &[bump_seed],
         ];
-
-        // TODO: Verify transfer target address
 
         // Create deterministic account on-chain
         create_account(
