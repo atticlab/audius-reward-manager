@@ -337,9 +337,30 @@ async fn success_multiple_recovery_1_tx() {
         VerifiedMessages::unpack_unchecked(&verified_msg_acct_data.data).unwrap();
 
     println!("verified_messages {:?}", verified_messages);
+
     // Expect 2 msgs
     assert_eq!(
         verified_messages.messages.len(),
         2
     );
+
+    // Verify every message
+    for (i, x) in verified_messages.messages.iter().enumerate() {
+        println!("Item {} = {:?}", i, x);
+        let sender_priv_key = SecretKey::parse(&keys[i]).unwrap();
+        let secp_pubkey = PublicKey::from_secret_key(&sender_priv_key);
+        let eth_address = construct_eth_pubkey(&secp_pubkey);
+        assert_eq!(
+            x.address,
+            eth_address
+        );
+        assert_eq!(
+            x.operator,
+            operators[i]
+        );
+        assert_eq!(
+            x.message,
+            senders_message
+        );
+    }
 }
