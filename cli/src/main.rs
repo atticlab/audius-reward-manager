@@ -143,6 +143,7 @@ fn command_create_sender(
     );
 
     println!("New sender account created: {:?}", derived_address);
+    println!("Owner {:}", config.owner.pubkey());
 
     let transaction = CustomTransaction {
         instructions: vec![create_sender(
@@ -243,8 +244,6 @@ fn command_add_sender(
 fn command_verify_transfer_signature(
     config: &Config,
     reward_manager_pubkey: Pubkey,
-    // verified_messages_keypair: Option<Keypair>,
-    // exact_verified_messages_pubkey: Option<Pubkey>,
     signer_pubkey: Pubkey,
     signer_secret: String,
     transfer_id: String,
@@ -252,12 +251,6 @@ fn command_verify_transfer_signature(
     amount: u64,
     bot_oracle_pubkey: Option<Pubkey>,
 ) -> CommandResult {
-    // let verified_messages_keypair = verified_messages_keypair.unwrap_or_else(Keypair::new);
-    // let verified_messages_pubkey =
-    //     exact_verified_messages_pubkey.unwrap_or_else(|| verified_messages_keypair.pubkey());
-
-    // println!("Verified messages {}", verified_messages_pubkey);
-
     let decoded_recipient_address =
         <[u8; 20]>::from_hex(recipient_eth_address).expect(HEX_ETH_ADDRESS_DECODING_ERROR);
 
@@ -291,21 +284,6 @@ fn command_verify_transfer_signature(
     };
 
     let mut instructions = Vec::new();
-    // let verified_messages_balance = config
-    //     .rpc_client
-    //     .get_minimum_balance_for_rent_exemption(VerifiedMessages::LEN)?;
-
-    // if exact_verified_messages_pubkey.is_none() {
-    //     instructions.push(system_instruction::create_account(
-    //         &config.fee_payer.pubkey(),
-    //         &verified_messages_pubkey,
-    //         verified_messages_balance,
-    //         VerifiedMessages::LEN as u64,
-    //         &audius_reward_manager::id(),
-    //     ));
-    //     signers.push(&verified_messages_keypair);
-    // }
-
     let decoded_secret = <[u8; 32]>::from_hex(signer_secret).expect(HEX_ETH_SECRET_DECODING_ERROR);
     instructions.push(new_secp256k1_instruction_2_0(
         &secp256k1::SecretKey::parse(&decoded_secret)?,
@@ -818,8 +796,6 @@ fn main() {
             command_verify_transfer_signature(
                 &config,
                 reward_manager,
-                // verified_messages_keypair,
-                // verified_messages_pubkey,
                 signer_pubkey,
                 signer_secret,
                 transfer_id,
