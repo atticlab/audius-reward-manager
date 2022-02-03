@@ -24,9 +24,9 @@ pub fn get_secp_instructions(
     let mut secp_instructions: Vec<Instruction> = Vec::new();
 
     for ind in 0..index_current_instruction {
-        let instruction = sysvar::instructions::load_instruction_at(
+        let instruction = sysvar::instructions::load_instruction_at_checked(
             ind as usize,
-            &instruction_info.data.borrow(),
+            &instruction_info.data.borrow_mut(),
         )
         .map_err(to_audius_program_error)?;
 
@@ -188,9 +188,9 @@ pub fn check_secp_verify_transfer(
     }
 
     // Load previous instruction
-    let secp_instruction = sysvar::instructions::load_instruction_at(
+    let secp_instruction = sysvar::instructions::load_instruction_at_checked(
         (index - 1) as usize,
-        &instruction_info.data.borrow(),
+        &instruction_info.data.borrow_mut(),
     )
     .map_err(to_audius_program_error)?;
 
